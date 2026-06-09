@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1600" viewBox="0 0 1600 1600">
+  <defs>
+    <style>
+      .bg { fill: #fff8ef; }
+      .title { font: 800 42px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #3f2d1b; }
+      .subtitle { font: 600 19px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #8a6c50; }
+      .lane-title { font: 800 23px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #3f2d1b; }
+      .box-title { font: 800 21px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #3f2d1b; }
+      .box-text { font: 600 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #5f4a36; }
+      .small { font: 600 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #80674f; }
+      .tag { font: 800 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #ffffff; }
+      .lane { fill: #fffdf8; stroke: #ead8c4; stroke-width: 2; }
+      .box { fill: #ffffff; stroke: #dfc6aa; stroke-width: 2; }
+      .box-frontend { fill: #fff4e3; stroke: #e7b36f; }
+      .box-backend { fill: #eef7ff; stroke: #86b6dc; }
+      .box-service { fill: #f4f0ff; stroke: #a997db; }
+      .box-device { fill: #effaf3; stroke: #82bc90; }
+      .box-db { fill: #fff0f2; stroke: #e08d9a; }
+      .tag-http { fill: #e8843f; }
+      .tag-mqtt { fill: #2c9b66; }
+      .tag-sql { fill: #c94c63; }
+      .tag-json { fill: #568fca; }
+      .arrow { fill: none; stroke: #7e6c59; stroke-width: 3; marker-end: url(#arrow); }
+      .arrow-mqtt { fill: none; stroke: #2c9b66; stroke-width: 3; marker-end: url(#arrow-green); }
+      .arrow-sql { fill: none; stroke: #c94c63; stroke-width: 3; marker-end: url(#arrow-red); }
+      .dash { stroke-dasharray: 9 8; }
+      .note { fill: #fff7d9; stroke: #e5c562; stroke-width: 2; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7e6c59"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2c9b66"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c94c63"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1600" height="1600"/>
+  <text class="title" x="80" y="76">Ai:Myaong 요청 · MQTT · Oracle DB 흐름도</text>
+  <text class="subtitle" x="82" y="112">React 화면 요청, 장치 제어 요청, Raspberry Pi/AI 생성 데이터가 어디서 시작되고 어디서 저장되는지 한 장으로 정리</text>
+
+  <rect class="lane" x="60" y="155" width="470" height="880" rx="18"/>
+  <rect class="lane" x="565" y="155" width="470" height="880" rx="18"/>
+  <rect class="lane" x="1070" y="155" width="470" height="880" rx="18"/>
+
+  <text class="lane-title" x="92" y="198">1. React / Raspberry Pi 요청 발생</text>
+  <text class="lane-title" x="597" y="198">2. FastAPI 라우터 · 서비스 처리</text>
+  <text class="lane-title" x="1102" y="198">3. MQTT 장치 통신 · Oracle 저장</text>
+
+  <!-- Frontend data flow -->
+  <rect class="box box-frontend" x="90" y="240" width="390" height="118" rx="14"/>
+  <text class="box-title" x="115" y="278">화면 데이터 조회/등록/수정</text>
+  <text class="box-text" x="115" y="309">Login / Dashboard / Settings / MyPage</text>
+  <text class="small" x="115" y="335">frontend/src/pages/*.jsx</text>
+
+  <rect class="box box-frontend" x="90" y="390" width="390" height="145" rx="14"/>
+  <text class="box-title" x="115" y="428">장치 제어 버튼</text>
+  <text class="box-text" x="115" y="459">RobotVision.jsx: 이동 / 카메라</text>
+  <text class="box-text" x="115" y="486">Dispenser.jsx: 배식 / 급수</text>
+  <text class="small" x="115" y="512">api.moveRobot(), api.moveCamera()</text>
+
+  <rect class="box box-device" x="90" y="705" width="390" height="140" rx="14"/>
+  <text class="box-title" x="115" y="743">Raspberry Pi / AI</text>
+  <text class="box-text" x="115" y="774">카메라 스트림 · 탐지 결과 생성</text>
+  <text class="small" x="115" y="802">raspberrypi/main.py</text>
+  <text class="small" x="115" y="827">POST /api/detections 추천</text>
+
+  <!-- API gateway -->
+  <rect class="box box-backend" x="595" y="240" width="390" height="118" rx="14"/>
+  <text class="box-title" x="620" y="278">frontend/src/api/api.js</text>
+  <text class="box-text" x="620" y="309">fetch(`${API_BASE_URL}${path}`)</text>
+  <text class="small" x="620" y="335">HTTP JSON 요청/응답 공통 진입점</text>
+
+  <rect class="box box-backend" x="595" y="390" width="390" height="145" rx="14"/>
+  <text class="box-title" x="620" y="428">FastAPI routers</text>
+  <text class="box-text" x="620" y="459">robot.py / feed.py / stream.py</text>
+  <text class="box-text" x="620" y="486">auth.py / pets.py / detection.py 추가 예정</text>
+  <text class="small" x="620" y="512">요청 검증 후 service 호출</text>
+
+  <rect class="box box-service" x="595" y="570" width="390" height="145" rx="14"/>
+  <text class="box-title" x="620" y="608">services/*.py</text>
+  <text class="box-text" x="620" y="639">RobotService / FeedService</text>
+  <text class="box-text" x="620" y="666">AuthService / PetService 추가 예정</text>
+  <text class="small" x="620" y="692">비즈니스 처리, MQTT 호출, DB 호출</text>
+
+  <rect class="box box-service" x="595" y="750" width="390" height="118" rx="14"/>
+  <text class="box-title" x="620" y="788">DetectionService 추가 예정</text>
+  <text class="box-text" x="620" y="819">AI 탐지 결과 저장</text>
+  <text class="small" x="620" y="845">이상 상황이면 ALERTS도 생성</text>
+
+  <!-- Right lane -->
+  <rect class="box box-device" x="1100" y="390" width="390" height="145" rx="14"/>
+  <text class="box-title" x="1125" y="428">MQTT Broker / Devices</text>
+  <text class="box-text" x="1125" y="459">robot/move, robot/camera</text>
+  <text class="box-text" x="1125" y="486">dispenser/feed, dispenser/water</text>
+  <text class="small" x="1125" y="512">라즈베리파이 / ESP32가 구독</text>
+
+  <rect class="box box-db" x="1100" y="570" width="390" height="205" rx="14"/>
+  <text class="box-title" x="1125" y="608">Oracle DB</text>
+  <text class="box-text" x="1125" y="639">USERS, PETS, SETTINGS</text>
+  <text class="box-text" x="1125" y="666">FEED_LOGS, DETECTION_LOGS</text>
+  <text class="box-text" x="1125" y="693">ALERTS, CLIPS, EMERGENCY_CLIPS</text>
+  <text class="small" x="1125" y="722">database.py 또는 repositories/*.py</text>
+  <text class="small" x="1125" y="748">SELECT / INSERT / UPDATE 실행</text>
+
+  <rect class="box box-db" x="1100" y="810" width="390" height="118" rx="14"/>
+  <text class="box-title" x="1125" y="848">HTTP JSON 응답</text>
+  <text class="box-text" x="1125" y="879">React state 갱신</text>
+  <text class="small" x="1125" y="905">성공/실패/조회 데이터 반환</text>
+
+  <!-- Arrows -->
+  <path class="arrow" d="M480 299 C535 299 540 299 595 299"/>
+  <rect class="tag-http" x="508" y="272" width="58" height="25" rx="12"/>
+  <text class="tag" x="520" y="290">HTTP</text>
+
+  <path class="arrow" d="M480 462 C535 462 540 462 595 462"/>
+  <rect class="tag-http" x="508" y="435" width="58" height="25" rx="12"/>
+  <text class="tag" x="520" y="453">HTTP</text>
+
+  <path class="arrow" d="M790 358 L790 390"/>
+  <path class="arrow" d="M790 535 L790 570"/>
+  <path class="arrow-mqtt" d="M985 462 C1035 462 1050 462 1100 462"/>
+  <rect class="tag-mqtt" x="1014" y="435" width="58" height="25" rx="12"/>
+  <text class="tag" x="1024" y="453">MQTT</text>
+
+  <path class="arrow-sql" d="M985 642 C1035 642 1050 642 1100 642"/>
+  <rect class="tag-sql" x="1014" y="615" width="58" height="25" rx="12"/>
+  <text class="tag" x="1028" y="633">SQL</text>
+
+  <path class="arrow" d="M1295 810 C1295 790 1295 790 1295 775"/>
+  <path class="arrow dash" d="M1100 870 C985 945 715 950 480 325"/>
+  <rect class="tag-json" x="884" y="914" width="58" height="25" rx="12"/>
+  <text class="tag" x="896" y="932">JSON</text>
+
+  <path class="arrow" d="M480 775 C535 775 540 810 595 810"/>
+  <rect class="tag-http" x="508" y="768" width="58" height="25" rx="12"/>
+  <text class="tag" x="520" y="786">HTTP</text>
+
+  <path class="arrow" d="M985 810 C1035 810 1050 705 1100 705"/>
+  <rect class="tag-sql" x="1014" y="758" width="58" height="25" rx="12"/>
+  <text class="tag" x="1028" y="776">SQL</text>
+
+  <!-- Notes -->
+  <rect class="note" x="90" y="890" width="1398" height="98" rx="16"/>
+  <text class="box-title" x="120" y="928">핵심 규칙</text>
+  <text class="box-text" x="120" y="960">라우터에는 SQL을 넣지 않고, service가 database.py 또는 repository를 호출한다. React와 Raspberry Pi는 Oracle에 직접 접속하지 않는다.</text>
+
+  <rect class="tag-http" x="92" y="1038" width="88" height="30" rx="15"/>
+  <text class="tag" x="111" y="1059">HTTP</text>
+  <text class="small" x="192" y="1059">React/Raspberry Pi ↔ FastAPI 요청</text>
+
+  <rect class="tag-mqtt" x="490" y="1038" width="88" height="30" rx="15"/>
+  <text class="tag" x="510" y="1059">MQTT</text>
+  <text class="small" x="590" y="1059">FastAPI → 장치 명령 발행</text>
+
+  <rect class="tag-sql" x="870" y="1038" width="88" height="30" rx="15"/>
+  <text class="tag" x="900" y="1059">SQL</text>
+  <text class="small" x="970" y="1059">FastAPI → Oracle 저장/조회</text>
+
+  <rect class="tag-json" x="1210" y="1038" width="88" height="30" rx="15"/>
+  <text class="tag" x="1233" y="1059">JSON</text>
+  <text class="small" x="1310" y="1059">FastAPI → React 응답</text>
+</svg>

@@ -1,0 +1,224 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ───────── 테마 색상 토큰 (RGB 채널) ─────────
+ * tailwind.config 의 brand-* 가 이 변수들을 rgb(var(--x) / alpha) 로 참조한다.
+ * .dark 가 html 에 붙으면 값만 바뀌어 전체 화면이 자동으로 다크로 전환된다. */
+:root {
+  --brand-primary: 240 141 134;
+  --brand-primary-soft: 247 181 176;
+  --brand-brown: 75 54 33;
+  --brand-brown-soft: 107 79 54;
+  --brand-bg: 255 249 241;
+  --brand-card: 255 255 255;
+  --brand-cream: 251 239 221;
+  --brand-paw: 245 181 168;
+  --brand-mute: 156 138 120;
+  --brand-line: 239 227 210;
+  --brand-success: 127 183 126;
+  --brand-warning: 240 184 96;
+  --brand-danger: 226 109 92;
+  --brand-input: 255 246 233;       /* 입력칸 배경 (#FFF6E9) */
+  --brand-primary-deep: 214 129 74; /* 진한 주황 (#D6814A) */
+  color-scheme: light;
+}
+
+.dark {
+  --brand-primary: 240 146 139;
+  --brand-primary-soft: 199 130 124;
+  --brand-brown: 242 233 221;      /* 기본 텍스트: 다크에선 밝게 */
+  --brand-brown-soft: 205 187 166;
+  --brand-bg: 26 23 20;            /* 페이지 배경 (따뜻한 차콜) */
+  --brand-card: 38 34 30;          /* 카드 */
+  --brand-cream: 46 40 35;         /* 크림 surface */
+  --brand-paw: 120 84 78;
+  --brand-mute: 168 150 132;
+  --brand-line: 58 51 44;          /* 보더/구분선 */
+  --brand-success: 138 198 137;
+  --brand-warning: 240 184 96;
+  --brand-danger: 233 124 108;
+  --brand-input: 48 43 37;          /* 입력칸 배경(다크) */
+  --brand-primary-deep: 224 140 86; /* 진한 주황(다크) */
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: 'Pretendard', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  background-color: rgb(var(--brand-bg));
+  color: rgb(var(--brand-brown));
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--brand-line));
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--brand-mute));
+}
+
+/* Safe Area (Capacitor) */
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.pl-safe {
+  padding-left: env(safe-area-inset-left);
+}
+.pr-safe {
+  padding-right: env(safe-area-inset-right);
+}
+.mt-safe {
+  margin-top: env(safe-area-inset-top);
+}
+.mb-safe {
+  margin-bottom: env(safe-area-inset-bottom);
+}
+.h-safe-top {
+  height: env(safe-area-inset-top);
+}
+.h-safe-bottom {
+  height: env(safe-area-inset-bottom);
+}
+
+/* Touch optimization */
+@media (pointer: coarse) {
+  button, a, [role="button"] {
+    min-height: 36px;
+  }
+}
+
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 스크롤바 숨김 (휠 피커 등) */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.touch-active {
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+.touch-active:active {
+  opacity: 0.85;
+  transform: scale(0.97);
+}
+
+/* Display headings */
+.font-display {
+  font-family: 'Gmarket Sans TTF', 'Gmarket Sans', 'Pretendard', system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+/* Cute rounded font (동물 귀여움 느낌) */
+.font-cute {
+  font-family: 'Jua', 'Pretendard', system-ui, sans-serif;
+  letter-spacing: 0.01em;
+}
+
+/* Cute handwriting accent */
+.font-hand {
+  font-family: 'Gaegu', 'Jua', 'Pretendard', system-ui, sans-serif;
+}
+
+/* 로그인 고양이 둥실 애니메이션 */
+@keyframes catBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.cat-bob {
+  animation: catBob 3s ease-in-out infinite;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cat-bob { animation: none; }
+}
+
+/* 탭/라우트 전환 — 은은한 페이드 + 살짝 떠오름 */
+@keyframes pageFadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  /* 종료 상태를 transform:none 으로 둬야 내부 position:fixed 모달이
+     이 요소 기준으로 잡히지 않음 (translateY(0) 도 containing block 생성) */
+  to { opacity: 1; transform: none; }
+}
+.page-enter {
+  /* backwards 사용: 시작 전 from 상태만 적용하고, 끝나면 transform 을 완전히 해제.
+     forwards/both 로 transform 을 "지속"하면 내부 position:fixed 모달이
+     이 요소 기준으로 잡혀 위로 박히는 문제가 생긴다. */
+  animation: pageFadeUp 260ms ease-out backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-enter { animation: none; }
+}
+
+/* recharts 차트 클릭/포커스 시 생기는 검은 아웃라인 제거 */
+.recharts-wrapper,
+.recharts-surface,
+.recharts-wrapper :focus,
+.recharts-surface:focus {
+  outline: none !important;
+}
+
+/* Soft 3D card */
+.soft-card {
+  background: rgb(var(--brand-card));
+  border-radius: 1.75rem;
+  box-shadow:
+    0 10px 24px -8px rgba(75, 54, 33, 0.12),
+    0 2px 6px -2px rgba(75, 54, 33, 0.06);
+}
+
+.soft-cream {
+  background: rgb(var(--brand-cream));
+}
+
+/* Paw watermark utility */
+.paw-watermark {
+  position: relative;
+  overflow: hidden;
+}
+.paw-watermark::before {
+  content: "";
+  position: absolute;
+  right: -14px;
+  bottom: -16px;
+  width: 110px;
+  height: 110px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='%23F5B5A8' opacity='0.28'><circle cx='20' cy='18' r='6'/><circle cx='44' cy='18' r='6'/><circle cx='12' cy='32' r='5.5'/><circle cx='52' cy='32' r='5.5'/><path d='M32 24c-9 0-16 8-16 16 0 6 5 10 11 10 2 0 3-1 5-1s3 1 5 1c6 0 11-4 11-10 0-8-7-16-16-16z'/></svg>");
+  background-repeat: no-repeat;
+  background-size: contain;
+  pointer-events: none;
+}

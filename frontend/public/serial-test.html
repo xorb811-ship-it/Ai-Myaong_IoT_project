@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arduino Serial Test Controller</title>
+  <style>
+    :root {
+      --bg: #f5efe6;
+      --panel: rgba(255, 250, 243, 0.94);
+      --ink: #1f2937;
+      --subtle: #6b7280;
+      --line: #dccfbd;
+      --accent: #c66a2b;
+      --accent-strong: #964716;
+      --ok: #1f8f63;
+      --warn: #c2410c;
+      --shadow: 0 18px 40px rgba(66, 38, 6, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(198, 106, 43, 0.2), transparent 32%),
+        linear-gradient(180deg, #fbf6ee 0%, var(--bg) 100%);
+    }
+
+    .shell {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .hero {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .hero h1 {
+      margin: 0 0 6px;
+      font-size: clamp(28px, 4vw, 42px);
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--subtle);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: var(--panel);
+      border: 1px solid rgba(150, 71, 22, 0.18);
+      box-shadow: var(--shadow);
+      font-weight: 600;
+    }
+
+    .badge-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--warn);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 18px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(150, 71, 22, 0.12);
+      border-radius: 24px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .panel h2 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+
+    .muted {
+      color: var(--subtle);
+      font-size: 14px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .control-block,
+    .info-card {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 16px;
+      background: #fffaf3;
+    }
+
+    .pad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .btn {
+      border: 0;
+      border-radius: 18px;
+      padding: 16px 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      background: #ecd7bf;
+      color: var(--ink);
+      transition: transform 120ms ease, background 120ms ease, opacity 120ms ease;
+      box-shadow: 0 8px 18px rgba(83, 53, 10, 0.12);
+      min-height: 64px;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      background: #e8c9a6;
+    }
+
+    .btn:active,
+    .btn.active {
+      transform: translateY(1px);
+      background: #d89d63;
+      color: #fff;
+    }
+
+    .btn.accent {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn.accent:hover {
+      background: var(--accent-strong);
+    }
+
+    .btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      transform: none;
+    }
+
+    .spacer {
+      visibility: hidden;
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .config-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .input {
+      flex: 1 1 180px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 14px 16px;
+      font-size: 14px;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .stat {
+      border-radius: 16px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      background: #fffaf3;
+    }
+
+    .stat-label {
+      display: block;
+      font-size: 12px;
+      color: var(--subtle);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .stat-value {
+      font-size: 18px;
+      font-weight: 700;
+      word-break: break-word;
+    }
+
+    .log {
+      margin-top: 16px;
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: #18212d;
+      color: #f9fafb;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+      min-height: 260px;
+      max-height: 360px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+
+    .hint {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--subtle);
+    }
+
+    @media (max-width: 900px) {
+      .grid,
+      .controls,
+      .status-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <h1>Arduino Serial Controller</h1>
+        <p>Direct USB serial control for the Arduino. No Raspberry Pi and no MQTT.</p>
+      </div>
+      <div class="badge">
+        <span class="badge-dot" id="statusDot"></span>
+        <span id="statusBadge">Serial disconnected</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2>Control Panel</h2>
+        <p class="muted">Drive with hold-to-run buttons or keyboard `WASD`. Hold camera buttons or arrow keys to keep moving. Stop is `Space`.</p>
+
+        <div class="controls">
+          <div class="control-block">
+            <strong>Drive</strong>
+            <div class="pad">
+              <div class="spacer">.</div>
+              <button class="btn move-btn" data-command="FORWARD">Forward</button>
+              <div class="spacer">.</div>
+              <button class="btn move-btn" data-command="LEFT">Left</button>
+              <button class="btn accent" id="stopButton" data-command="STOP">Stop</button>
+              <button class="btn move-btn" data-command="RIGHT">Right</button>
+              <div class="spacer">.</div>
+              <button class="btn move-btn" data-command="BACKWARD">Backward</button>
+              <div class="spacer">.</div>
+            </div>
+          </div>
+
+          <div class="control-block">
+            <strong>Pan Tilt</strong>
+            <div class="pad">
+              <div class="spacer">.</div>
+              <button class="btn camera-btn" data-command="CAM_UP">Up</button>
+              <div class="spacer">.</div>
+              <button class="btn camera-btn" data-command="CAM_LEFT">Left</button>
+              <button class="btn accent camera-btn" data-command="CAM_CENTER">Center</button>
+              <button class="btn camera-btn" data-command="CAM_RIGHT">Right</button>
+              <div class="spacer">.</div>
+              <button class="btn camera-btn" data-command="CAM_DOWN">Down</button>
+              <div class="spacer">.</div>
+            </div>
+          </div>
+        </div>
+
+        <p class="hint">Tip: connect the port first. Drive sends `STOP` on release, and camera keeps stepping while held.</p>
+      </div>
+
+      <div class="panel stack">
+        <div class="info-card">
+          <h2>Serial Connection</h2>
+          <p class="muted">Use Chrome or Edge. Open this page from `localhost`, then pick the Arduino serial port.</p>
+          <div class="config-row">
+            <input class="input" id="baudRate" type="number" min="300" step="1" value="115200" />
+            <button class="btn accent" id="connectButton">Connect</button>
+            <button class="btn" id="disconnectButton" disabled>Disconnect</button>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <h2>Status</h2>
+          <div class="status-grid">
+            <div class="stat">
+              <span class="stat-label">Port</span>
+              <span class="stat-value" id="portValue">Not selected</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Baud</span>
+              <span class="stat-value" id="baudValue">115200</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Last Sent</span>
+              <span class="stat-value" id="lastSentValue">-</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Last Received</span>
+              <span class="stat-value" id="lastReceivedValue">-</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <h2>Log</h2>
+          <div class="log" id="logPanel"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const statusBadge = document.getElementById("statusBadge");
+    const statusDot = document.getElementById("statusDot");
+    const baudRateInput = document.getElementById("baudRate");
+    const connectButton = document.getElementById("connectButton");
+    const disconnectButton = document.getElementById("disconnectButton");
+    const stopButton = document.getElementById("stopButton");
+    const logPanel = document.getElementById("logPanel");
+    const portValue = document.getElementById("portValue");
+    const baudValue = document.getElementById("baudValue");
+    const lastSentValue = document.getElementById("lastSentValue");
+    const lastReceivedValue = document.getElementById("lastReceivedValue");
+
+    let port = null;
+    let writer = null;
+    let reader = null;
+    let activeMoveCommand = null;
+    let readLoopActive = false;
+    let keyboardActive = false;
+    let activeCameraCommand = null;
+    let cameraRepeatTimer = null;
+    const CAMERA_REPEAT_MS = 120;
+
+    function appendLog(message) {
+      const stamp = new Date().toLocaleTimeString("en-GB", { hour12: false });
+      logPanel.textContent = `[${stamp}] ${message}\n${logPanel.textContent}`.trim();
+    }
+
+    function setConnectionState(connected, label) {
+      statusBadge.textContent = label;
+      statusDot.style.background = connected ? "var(--ok)" : "var(--warn)";
+      connectButton.disabled = connected;
+      disconnectButton.disabled = !connected;
+      document.querySelectorAll(".move-btn, .camera-btn, #stopButton").forEach((button) => {
+        button.disabled = !connected;
+      });
+    }
+
+    function updateBaudValue() {
+      baudValue.textContent = baudRateInput.value || "115200";
+    }
+
+    async function connectSerial() {
+      if (!("serial" in navigator)) {
+        appendLog("Web Serial API is not available in this browser.");
+        return;
+      }
+
+      try {
+        port = await navigator.serial.requestPort();
+        const baudRate = Number(baudRateInput.value || 115200);
+        await port.open({ baudRate });
+        writer = port.writable.getWriter();
+        readLoopActive = true;
+        setConnectionState(true, "Serial connected");
+        portValue.textContent = "Arduino port selected";
+        baudValue.textContent = String(baudRate);
+        appendLog(`Connected at ${baudRate} baud`);
+        startReadLoop();
+      } catch (error) {
+        appendLog(`Connect failed: ${error.message}`);
+      }
+    }
+
+    async function disconnectSerial() {
+      readLoopActive = false;
+
+      try {
+        if (reader) {
+          await reader.cancel();
+          reader.releaseLock();
+          reader = null;
+        }
+      } catch (error) {
+        appendLog(`Reader close warning: ${error.message}`);
+      }
+
+      try {
+        if (writer) {
+          writer.releaseLock();
+          writer = null;
+        }
+      } catch (error) {
+        appendLog(`Writer close warning: ${error.message}`);
+      }
+
+      try {
+        if (port) {
+          await port.close();
+        }
+      } catch (error) {
+        appendLog(`Port close warning: ${error.message}`);
+      } finally {
+        port = null;
+        portValue.textContent = "Not selected";
+        setConnectionState(false, "Serial disconnected");
+        appendLog("Disconnected");
+      }
+    }
+
+    async function startReadLoop() {
+      if (!port || !port.readable) {
+        return;
+      }
+
+      const textDecoder = new TextDecoder();
+      let buffer = "";
+
+      while (port && port.readable && readLoopActive) {
+        try {
+          reader = port.readable.getReader();
+          while (readLoopActive) {
+            const { value, done } = await reader.read();
+            if (done) {
+              break;
+            }
+            if (!value) {
+              continue;
+            }
+
+            buffer += textDecoder.decode(value, { stream: true });
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed) {
+                continue;
+              }
+              lastReceivedValue.textContent = trimmed;
+              appendLog(`RX <- ${trimmed}`);
+            }
+          }
+        } catch (error) {
+          if (readLoopActive) {
+            appendLog(`Read failed: ${error.message}`);
+          }
+          break;
+        } finally {
+          if (reader) {
+            reader.releaseLock();
+            reader = null;
+          }
+        }
+      }
+    }
+
+    async function sendCommand(command) {
+      if (!writer) {
+        appendLog(`Not connected. Ignored: ${command}`);
+        return;
+      }
+
+      try {
+        const payload = new TextEncoder().encode(`${command}\n`);
+        await writer.write(payload);
+        lastSentValue.textContent = command;
+        appendLog(`TX -> ${command}`);
+      } catch (error) {
+        appendLog(`Send failed: ${error.message}`);
+      }
+    }
+
+    function clearCameraRepeat() {
+      if (cameraRepeatTimer) {
+        clearInterval(cameraRepeatTimer);
+        cameraRepeatTimer = null;
+      }
+      activeCameraCommand = null;
+      document.querySelectorAll(".camera-btn").forEach((item) => item.classList.remove("active"));
+    }
+
+    async function startCameraHold(command, button) {
+      if (activeCameraCommand === command) {
+        return;
+      }
+
+      clearCameraRepeat();
+      activeCameraCommand = command;
+      if (button) {
+        button.classList.add("active");
+      }
+
+      await sendCommand(command);
+
+      if (command === "CAM_CENTER") {
+        clearCameraRepeat();
+        return;
+      }
+
+      cameraRepeatTimer = setInterval(() => {
+        sendCommand(command);
+      }, CAMERA_REPEAT_MS);
+    }
+
+    async function activateMove(command, button) {
+      if (activeMoveCommand === command) {
+        return;
+      }
+
+      activeMoveCommand = command;
+      document.querySelectorAll(".move-btn, #stopButton").forEach((item) => item.classList.remove("active"));
+      if (button) {
+        button.classList.add("active");
+      }
+      await sendCommand(command);
+    }
+
+    async function releaseMove() {
+      if (!activeMoveCommand || activeMoveCommand === "STOP") {
+        return;
+      }
+
+      activeMoveCommand = "STOP";
+      document.querySelectorAll(".move-btn, #stopButton").forEach((item) => item.classList.remove("active"));
+      stopButton.classList.add("active");
+      await sendCommand("STOP");
+    }
+
+    document.querySelectorAll(".move-btn").forEach((button) => {
+      const command = button.dataset.command;
+
+      ["mousedown", "touchstart"].forEach((eventName) => {
+        button.addEventListener(eventName, async (event) => {
+          event.preventDefault();
+          await activateMove(command, button);
+        });
+      });
+
+      ["mouseup", "mouseleave", "touchend", "touchcancel"].forEach((eventName) => {
+        button.addEventListener(eventName, async (event) => {
+          event.preventDefault();
+          await releaseMove();
+        });
+      });
+    });
+
+    stopButton.addEventListener("click", async () => {
+      activeMoveCommand = "STOP";
+      document.querySelectorAll(".move-btn, #stopButton").forEach((item) => item.classList.remove("active"));
+      stopButton.classList.add("active");
+      await sendCommand("STOP");
+    });
+
+    document.querySelectorAll(".camera-btn").forEach((button) => {
+      const command = button.dataset.command;
+
+      ["mousedown", "touchstart"].forEach((eventName) => {
+        button.addEventListener(eventName, async (event) => {
+          event.preventDefault();
+          await startCameraHold(command, button);
+        });
+      });
+
+      ["mouseup", "mouseleave", "touchend", "touchcancel"].forEach((eventName) => {
+        button.addEventListener(eventName, (event) => {
+          event.preventDefault();
+          clearCameraRepeat();
+        });
+      });
+    });
+
+    connectButton.addEventListener("click", connectSerial);
+    disconnectButton.addEventListener("click", disconnectSerial);
+    baudRateInput.addEventListener("input", updateBaudValue);
+
+    window.addEventListener("keydown", async (event) => {
+      const moveMap = {
+        KeyW: "FORWARD",
+        KeyS: "BACKWARD",
+        KeyA: "LEFT",
+        KeyD: "RIGHT",
+      };
+
+      const cameraMap = {
+        ArrowUp: "CAM_UP",
+        ArrowDown: "CAM_DOWN",
+        ArrowLeft: "CAM_LEFT",
+        ArrowRight: "CAM_RIGHT",
+      };
+
+      if (event.code === "Space") {
+        event.preventDefault();
+        await releaseMove();
+        keyboardActive = false;
+        return;
+      }
+
+      if (moveMap[event.code]) {
+        event.preventDefault();
+        if (event.repeat && keyboardActive) {
+          return;
+        }
+        keyboardActive = true;
+        const command = moveMap[event.code];
+        const button = document.querySelector(`[data-command="${command}"]`);
+        await activateMove(command, button);
+        return;
+      }
+
+      if (cameraMap[event.code]) {
+        event.preventDefault();
+        if (event.repeat && activeCameraCommand === cameraMap[event.code]) {
+          return;
+        }
+        const command = cameraMap[event.code];
+        const button = document.querySelector(`.camera-btn[data-command="${command}"]`);
+        await startCameraHold(command, button);
+      }
+    });
+
+    window.addEventListener("keyup", async (event) => {
+      if (["KeyW", "KeyA", "KeyS", "KeyD"].includes(event.code)) {
+        keyboardActive = false;
+        await releaseMove();
+      }
+
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
+        clearCameraRepeat();
+      }
+    });
+
+    window.addEventListener("beforeunload", () => {
+      clearCameraRepeat();
+      if (port) {
+        disconnectSerial();
+      }
+    });
+
+    setConnectionState(false, "Serial disconnected");
+    updateBaudValue();
+    appendLog("Ready. Click Connect to choose the Arduino serial port.");
+  </script>
+</body>
+</html>

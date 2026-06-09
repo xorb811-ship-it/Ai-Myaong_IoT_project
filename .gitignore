@@ -1,0 +1,117 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+
+# Local env files
+.env
+.env.*
+!.env.example
+!.env*.example
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+**/.venv/
+**/venv/
+**/env/
+**/ENV/
+
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Node / frontend
+node_modules/
+**/node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+.parcel-cache/
+.next/
+.nuxt/
+.svelte-kit/
+.turbo/
+.vite/
+vite.svg
+frontend/dist/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Databases / local state
+*.sqlite3
+*.db
+backend/*.sqlite3
+backend/backend/*.sqlite3
+
+# Runtime / temp files
+*.pid
+*.pid.lock
+*.tmp
+*.temp
+.tmp/
+tmp/
+temp/
+
+# Arduino / embedded build outputs
+*.bin
+*.elf
+*.hex
+*.map
+*.o
+*.a
+*.d
+*.obj
+*.exe
+.pio/
+
+# Vercel / v0 leftovers
+.vercel/
+.v0-trash/
+.snowflake/
+__v0_runtime_loader.js
+__v0_devtools.tsx
+__v0_jsx-dev-runtime.ts
+
+#  비디오 및 영상 파일 제외 설정
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.wmv
+
+#  녹화 기능으로 자동 생성되는 폴더 전체 제외 (필요한 경우)
+clips/
+recordings/
+
+# 캡처 이미지 폴더 제외 추가
+captures/
+recordings/*.swp
+
+oracle_wallet/
