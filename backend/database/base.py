@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-BACKEND_ENV = Path(__file__).resolve().parents[1] / "backend" / ".env"
+BACKEND_ENV = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(BACKEND_ENV)
 
 ORACLE_USER = os.getenv("ORACLE_USER")
