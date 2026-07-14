@@ -177,25 +177,8 @@ void setLoadCell2Scale(float scale) {
 }
 
 void serviceLoadCell() {
-  if (millis() - lastLoadCellPrintMs < LOADCELL_PRINT_INTERVAL_MS) {
-    return;
-  }
-
-  lastLoadCellPrintMs = millis();
-
-  if (loadCell1.is_ready()) {
-    Serial.print("LOADCELL1 unit=");
-    Serial.print(loadCell1.get_units(1), 2);
-    Serial.print(" count=");
-    Serial.println(loadCell1.get_value(1));
-  }
-
-  if (loadCell2.is_ready()) {
-    Serial.print("LOADCELL2 unit=");
-    Serial.print(loadCell2.get_units(1), 2);
-    Serial.print(" count=");
-    Serial.println(loadCell2.get_value(1));
-  }
+  // Periodic serial output is intentionally disabled. MQTT weight publishing
+  // and the explicit LOAD/LOAD1/LOAD2 serial commands remain available.
 }
 
 void printLoadCellPinout() {

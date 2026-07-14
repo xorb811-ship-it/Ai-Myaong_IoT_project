@@ -17,6 +17,8 @@ void printHelp() {
   Serial.println("  LOAD_TARE, LOAD1_TARE, LOAD2_TARE, LOAD_SCALE value");
   Serial.println("  LOAD1_SCALE value, LOAD2_SCALE value");
   Serial.println("  PINOUT");
+  Serial.println("  WIFI_SETUP opens the Wi-Fi/MQTT setup portal");
+  Serial.println("  NET_STATUS prints Wi-Fi and MQTT status");
   Serial.println("  PING");
   Serial.println("  CAM_UP, CAM_DOWN, CAM_LEFT, CAM_RIGHT, CAM_CENTER, FEED");
 }
@@ -66,6 +68,8 @@ void executeSerialCommand(String command) {
   else if (command.startsWith("LOAD1_SCALE ")) setLoadCell1Scale(command.substring(12).toFloat());
   else if (command.startsWith("LOAD2_SCALE ")) setLoadCell2Scale(command.substring(12).toFloat());
   else if (command == "PING") Serial.println("ACK PONG");
+  else if (command == "WIFI_SETUP") startWifiSetupPortal();
+  else if (command == "NET_STATUS") printNetworkStatus();
   else if (command == "HELP") printHelp();
   else if (command == "CAM_UP") cameraUp();
   else if (command == "CAM_DOWN") cameraDown();

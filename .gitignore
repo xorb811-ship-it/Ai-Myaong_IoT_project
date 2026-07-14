@@ -78,6 +78,7 @@ tmp/
 temp/
 
 # Arduino / embedded build outputs
+esp32/main/mqtt_secrets.h
 *.bin
 *.elf
 *.hex

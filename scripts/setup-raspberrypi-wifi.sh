@@ -7,17 +7,12 @@ Usage:
   bash ./scripts/setup-raspberrypi-wifi.sh "SSID" "PASSWORD"
 
 Optional environment variables:
-  LOCAL_MQTT_HOST=auto
-  LOCAL_MQTT_PORT=1883
-  ESP32_SETUP_URL=http://192.168.4.1
   PI_AP_FALLBACK=false
   PI_AP_SSID=AiMyaong_PI_SETUP
   PI_AP_PASSWORD=aimyaong1234
 
-This script connects Raspberry Pi OS to Wi-Fi with nmcli or raspi-config,
-updates raspberrypi/.env, updates the ESP32 sketch default MQTT host, and
-optionally pushes the same Wi-Fi/MQTT settings to the ESP32 setup portal
-when it is reachable.
+This script connects Raspberry Pi OS to Wi-Fi with nmcli or raspi-config and
+updates the Raspberry Pi, backend, and frontend network URLs.
 EOF
 }
 
@@ -33,9 +28,6 @@ fi
 
 SSID="$1"
 PASSWORD="$2"
-MQTT_HOST="${LOCAL_MQTT_HOST:-auto}"
-MQTT_PORT="${LOCAL_MQTT_PORT:-1883}"
-ESP32_SETUP_URL="${ESP32_SETUP_URL:-http://192.168.4.1}"
 PI_AP_FALLBACK="${PI_AP_FALLBACK:-false}"
 PI_AP_SSID="${PI_AP_SSID:-AiMyaong_PI_SETUP}"
 PI_AP_PASSWORD="${PI_AP_PASSWORD:-aimyaong1234}"
@@ -46,10 +38,6 @@ BACKEND_ENV="$REPO_ROOT/backend/.env"
 FRONTEND_ENV="$REPO_ROOT/frontend/.env"
 PI_ENV_BACKUP=""
 PREVIOUS_NMCLI_CONNECTION=""
-ESP32_WIFI_HEADERS=(
-  "$REPO_ROOT/esp32/dispenser/wifi_mqtt.h"
-  "$REPO_ROOT/esp32/dispenser/AiMyaongDispenser/wifi_mqtt.h"
-)
 
 start_pi_ap_fallback() {
   if [[ "$PI_AP_FALLBACK" != "true" ]]; then
@@ -211,21 +199,10 @@ else
   exit 1
 fi
 
-if [[ "$MQTT_HOST" == "auto" ]]; then
-  MQTT_HOST="$(detect_pi_ip)"
-  if [[ -z "$MQTT_HOST" ]]; then
-    fail_with_rollback "failed to detect Raspberry Pi Wi-Fi IP for LOCAL_MQTT_HOST. Rerun with LOCAL_MQTT_HOST=<ip> if needed."
-  fi
+PI_WIFI_IP="$(detect_pi_ip)"
+if [[ -z "$PI_WIFI_IP" ]]; then
+  fail_with_rollback "failed to detect the Raspberry Pi Wi-Fi IP."
 fi
-
-json_escape() {
-  local value="$1"
-  value="${value//\\/\\\\}"
-  value="${value//\"/\\\"}"
-  value="${value//$'\n'/\\n}"
-  value="${value//$'\r'/\\r}"
-  printf '%s' "$value"
-}
 
 mkdir -p "$(dirname "$PI_ENV")"
 if [[ ! -f "$PI_ENV" ]]; then
@@ -253,64 +230,20 @@ set_pi_env_value() {
   set_env_value "$PI_ENV" "$key" "$value"
 }
 
-set_pi_env_value LOCAL_MQTT_HOST "127.0.0.1"
-set_pi_env_value LOCAL_MQTT_PORT "$MQTT_PORT"
 set_pi_env_value MQTT_DISABLED false
 set_pi_env_value PI_AGENT_HTTP_HOST "${PI_AGENT_HTTP_HOST:-0.0.0.0}"
 set_pi_env_value PI_AGENT_HTTP_PORT "${PI_AGENT_HTTP_PORT:-8765}"
 set_pi_env_value PI_AGENT_HTTP_DISABLED false
 
 if [[ -f "$BACKEND_ENV" ]]; then
-  set_env_value "$BACKEND_ENV" PI_AGENT_BASE_URL "http://$MQTT_HOST:${PI_AGENT_HTTP_PORT:-8765}"
-  set_env_value "$BACKEND_ENV" CAMERA_STREAM_URL "http://$MQTT_HOST:${STREAM_PORT:-8081}/stream.mjpg"
+  set_env_value "$BACKEND_ENV" PI_AGENT_BASE_URL "http://$PI_WIFI_IP:${PI_AGENT_HTTP_PORT:-8765}"
+  set_env_value "$BACKEND_ENV" CAMERA_STREAM_URL "http://$PI_WIFI_IP:${STREAM_PORT:-8081}/stream.mjpg"
   set_env_value "$BACKEND_ENV" CAMERA_PROXY false
 fi
 
 if [[ -f "$FRONTEND_ENV" ]]; then
-  set_env_value "$FRONTEND_ENV" VITE_ESP32_MQTT_HOST "$MQTT_HOST"
-  set_env_value "$FRONTEND_ENV" VITE_STREAM_URL "http://$MQTT_HOST:${STREAM_PORT:-8081}/stream.mjpg"
+  set_env_value "$FRONTEND_ENV" VITE_STREAM_URL "http://$PI_WIFI_IP:${STREAM_PORT:-8081}/stream.mjpg"
 fi
 
-update_esp32_default_mqtt_host() {
-  local file="$1"
-  if [[ ! -f "$file" ]]; then
-    return
-  fi
-
-  sed -i \
-    -e "s|constexpr const char\\* DEFAULT_MQTT_HOST = \".*\";|constexpr const char* DEFAULT_MQTT_HOST = \"$MQTT_HOST\";|" \
-    -e "s|<input id=\"mqttHost\" placeholder=\"MQTT host\" value=\".*\">|<input id=\"mqttHost\" placeholder=\"MQTT host\" value=\"$MQTT_HOST\">|" \
-    "$file"
-}
-
-for header in "${ESP32_WIFI_HEADERS[@]}"; do
-  update_esp32_default_mqtt_host "$header"
-done
-
-push_esp32_setup() {
-  if ! command -v curl >/dev/null 2>&1; then
-    echo "[wifi] curl not found. Skipping ESP32 setup portal update."
-    return
-  fi
-
-  local json_ssid json_password json_mqtt_host
-  json_ssid="$(json_escape "$SSID")"
-  json_password="$(json_escape "$PASSWORD")"
-  json_mqtt_host="$(json_escape "$MQTT_HOST")"
-
-  echo "[wifi] trying ESP32 setup portal: $ESP32_SETUP_URL"
-  if curl --connect-timeout 3 --max-time 5 -fsS \
-    -H 'Content-Type: application/json' \
-    -d "{\"ssid\":\"$json_ssid\",\"password\":\"$json_password\",\"mqttHost\":\"$json_mqtt_host\"}" \
-    "$ESP32_SETUP_URL/api/wifi/connect" >/dev/null; then
-    echo "[wifi] ESP32 setup portal updated."
-  else
-    echo "[wifi] ESP32 setup portal was not reachable. Configure ESP32 through ESP32_FEEDER_SETUP or rerun when reachable."
-  fi
-}
-
-push_esp32_setup
-
 echo "[wifi] Raspberry Pi Wi-Fi configured."
-echo "[wifi] local ESP32 MQTT broker: $MQTT_HOST:$MQTT_PORT"
-echo "[wifi] ESP32 default MQTT host updated to: $MQTT_HOST"
+echo "[wifi] Raspberry Pi Wi-Fi IP: $PI_WIFI_IP"

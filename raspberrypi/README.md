@@ -112,16 +112,12 @@ bash ./scripts/start-raspberrypi.sh
 
 이 스크립트는 다음 순서로 동작합니다.
 
-1. `1883` 포트에 MQTT broker가 이미 켜져 있는지 확인
-2. broker가 없으면 `mosquitto`를 임시로 실행
-3. `raspberrypi/main.py` 에이전트 실행
-4. MQTT 메시지를 받아 Arduino로 전달
+1. `raspberrypi/.env` 설정 로드
+2. 카메라 스트림 실행
+3. `raspberrypi/main.py` 에이전트를 HiveMQ Cloud에 연결
+4. 로봇 MQTT 메시지를 받아 Arduino로 전달
 
-MQTT broker만 따로 수동 실행하고 싶을 때는:
-
-```bash
-bash ./scripts/start-mqtt-broker.sh
-```
+ESP32 디스펜서도 HiveMQ Cloud에 직접 연결하며, 라즈베리파이는 로컬 Mosquitto나 디스펜서 MQTT 브리지를 실행하지 않습니다.
 
 ## 정상 로그
 
@@ -141,61 +137,24 @@ bash ./scripts/start-mqtt-broker.sh
 [serial] -> robot-controller CAM_LEFT
 ```
 
-## HiveMQ to Local Mosquitto Bridge
-
-Use this layout when ESP32 devices are on the same Wi-Fi as the Raspberry Pi:
-
-```text
-Frontend/backend -> HiveMQ Cloud -> Raspberry Pi mqtt_bridge.py -> local Mosquitto -> ESP32 dispenser
-ESP32 dispenser -> local Mosquitto -> Raspberry Pi mqtt_bridge.py -> HiveMQ Cloud
-```
-
-Recommended `raspberrypi/.env` values:
-
-```env
-# Cloud broker, usually HiveMQ Cloud
-MQTT_BROKER_HOST=your-hivemq-cluster.s1.eu.hivemq.cloud
-MQTT_BROKER_PORT=8883
-MQTT_USERNAME=your-hivemq-username
-MQTT_PASSWORD=your-hivemq-password
-MQTT_USE_TLS=true
-
-# Local broker for ESP32 devices
-LOCAL_MQTT_HOST=127.0.0.1
-LOCAL_MQTT_PORT=1883
-START_MQTT_BRIDGE=true
-
-# Bridge directions
-MQTT_BRIDGE_CLOUD_TO_LOCAL_TOPICS=dispenser/feed,dispenser/water,dispenser/pump/off,dispenser/pump/speed,dispenser/tare,dispenser/weight/request
-MQTT_BRIDGE_LOCAL_TO_CLOUD_TOPICS=dispenser/status,dispenser/weight
-```
-
-ESP32 dispenser MQTT host:
-
-```text
-raspberrypi.local
-```
-
-The local Mosquitto broker must listen on `0.0.0.0:1883` so ESP32 can connect from Wi-Fi. `scripts/start-raspberrypi.sh` starts a temporary Mosquitto listener if one is not already running.
-
 ## MQTT 수신 테스트
 
 라즈베리파이에서 전체 MQTT 메시지를 확인하려면:
 
 ```bash
-mosquitto_sub -h 10.1.82.103 -p 1883 -t '#' -v
+mosquitto_sub -h "$MQTT_BROKER_HOST" -p 8883 --cafile /etc/ssl/certs/ca-certificates.crt -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" -t '#' -v
 ```
 
 다른 터미널에서 테스트 발행:
 
 ```bash
-mosquitto_pub -h 10.1.82.103 -p 1883 -t robot/camera -m CAM_LEFT
+mosquitto_pub -h "$MQTT_BROKER_HOST" -p 8883 --cafile /etc/ssl/certs/ca-certificates.crt -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" -t ai-myaong/robot/pantilt -m CAM_LEFT
 ```
 
 정상 수신 예:
 
 ```text
-robot/camera CAM_LEFT
+ai-myaong/robot/pantilt CAM_LEFT
 ```
 
 ## Arduino 시리얼 포트 확인
@@ -224,21 +183,14 @@ SERIAL_PORT=/dev/ttyACM0
 
 ## 자주 나는 문제
 
-### `ConnectionRefusedError: [Errno 111] Connection refused`
+### MQTT 연결 실패
 
-MQTT broker가 꺼져 있거나 `MQTT_BROKER_HOST`, `MQTT_BROKER_PORT`가 맞지 않는 상태입니다.
+HiveMQ 주소, 포트, 계정 또는 TLS 설정이 맞지 않는 상태입니다.
 
 확인:
 
 ```bash
-systemctl status mosquitto
-ss -ltnp | grep 1883
-```
-
-프로젝트 스크립트로 broker까지 같이 띄우려면:
-
-```bash
-bash ./scripts/start-raspberrypi.sh
+grep '^MQTT_' raspberrypi/.env
 ```
 
 ### `could not open port /dev/ttyUSB0`

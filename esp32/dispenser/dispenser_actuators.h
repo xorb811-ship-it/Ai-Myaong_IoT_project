@@ -24,8 +24,9 @@ inline unsigned long foodRunMsForAmount(int amount) {
 
 inline void runFoodMotor(uint8_t speed) {
   digitalWrite(FOOD_MOTOR_STANDBY_PIN, HIGH);
-  digitalWrite(FOOD_MOTOR_IN1_PIN, HIGH);
-  digitalWrite(FOOD_MOTOR_IN2_PIN, LOW);
+  // The auger dispenses food when the motor runs in reverse.
+  digitalWrite(FOOD_MOTOR_IN1_PIN, LOW);
+  digitalWrite(FOOD_MOTOR_IN2_PIN, HIGH);
   analogWrite(FOOD_MOTOR_PWM_PIN, speed);
 }
 

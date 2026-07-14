@@ -47,7 +47,7 @@ def network_status(request: Request):
     return {
         "raspberrypiEnv": read_env_values(
             PI_ENV,
-            ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "LOCAL_MQTT_HOST", "LOCAL_MQTT_PORT", "SERIAL_PORT", "MQTT_DISABLED"),
+            ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "SERIAL_PORT", "MQTT_DISABLED"),
         ),
         "backendEnv": backend_env,
         "wifiIp": pi_status.get("ip") or _host_from_url(backend_env.get("PI_AGENT_BASE_URL", "")) or local_wifi_ip,
@@ -69,9 +69,6 @@ def pi_wifi_connect(payload: SharedWifiRequest):
         {
             "ssid": payload.ssid,
             "password": payload.password,
-            "mqttHost": payload.mqtt_host,
-            "mqttPort": payload.mqtt_port,
-            "esp32SetupUrl": payload.esp32_setup_url,
             "piApFallback": payload.pi_ap_fallback,
         },
     )
@@ -97,11 +94,7 @@ def configure_shared_wifi(payload: SharedWifiRequest):
         )
 
     env = os.environ.copy()
-    env["LOCAL_MQTT_HOST"] = (payload.mqtt_host or "auto").strip() or "auto"
-    env["LOCAL_MQTT_PORT"] = str(payload.mqtt_port)
     env["PI_AP_FALLBACK"] = "true" if payload.pi_ap_fallback else "false"
-    if payload.esp32_setup_url:
-        env["ESP32_SETUP_URL"] = payload.esp32_setup_url
 
     try:
         result = subprocess.run(
@@ -147,7 +140,7 @@ def configure_shared_wifi(payload: SharedWifiRequest):
         "stderr": result.stderr,
         "raspberrypiEnv": read_env_values(
             PI_ENV,
-            ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "LOCAL_MQTT_HOST", "LOCAL_MQTT_PORT", "SERIAL_PORT", "MQTT_DISABLED"),
+            ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "SERIAL_PORT", "MQTT_DISABLED"),
         ),
         "backendEnv": read_env_values(
             REPO_ROOT / "backend" / ".env",

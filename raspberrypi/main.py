@@ -444,9 +444,6 @@ def _run_wifi_http_server(host: str, port: int, agent: RaspberryPiAgent) -> None
         body = body or {}
         ssid = str(body.get("ssid", "")).strip()
         password = str(body.get("password", ""))
-        mqtt_host = str(body.get("mqttHost") or body.get("mqtt_host") or "auto").strip() or "auto"
-        mqtt_port = int(body.get("mqttPort") or body.get("mqtt_port") or 1883)
-        esp32_setup_url = str(body.get("esp32SetupUrl") or body.get("esp32_setup_url") or "").strip()
         pi_ap_fallback = bool(body.get("piApFallback") or body.get("pi_ap_fallback") or False)
         desktop_backend_url = str(body.get("desktopBackendUrl") or body.get("desktop_backend_url") or "").strip().rstrip("/")
 
@@ -461,11 +458,7 @@ def _run_wifi_http_server(host: str, port: int, agent: RaspberryPiAgent) -> None
             print(f"[device] desktop backend URL saved before Wi-Fi change: {desktop_backend_url}")
 
         env = os.environ.copy()
-        env["LOCAL_MQTT_HOST"] = mqtt_host
-        env["LOCAL_MQTT_PORT"] = str(mqtt_port)
         env["PI_AP_FALLBACK"] = "true" if pi_ap_fallback else "false"
-        if esp32_setup_url:
-            env["ESP32_SETUP_URL"] = esp32_setup_url
 
         previous_connection = active_wifi_connection()
         pi_env_backup = PI_ENV.read_text(encoding="utf-8") if PI_ENV.exists() else ""

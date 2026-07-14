@@ -58,9 +58,22 @@ The previous HX711 test pins used GPIO32/GPIO33, but GPIO32 is now used by the w
 
 MQTT routing for `main/`:
 
-- Broker: `raspberrypi.local:1883`
+- Broker: HiveMQ Cloud over TLS on port `8883`
 - Subscribe: `dispenser/feed`, `dispenser/water`, `dispenser/pump/off`, `dispenser/pump/speed`, `dispenser/tare`, `dispenser/weight/request`
 - Publish: `dispenser/status`, `dispenser/weight`
+
+Before compiling, copy `main/mqtt_secrets.example.h` to `main/mqtt_secrets.h` and fill in the HiveMQ Cloud host, username, password, and root CA certificate. `mqtt_secrets.h` is ignored by Git. For HiveMQ Cloud clusters using Let's Encrypt, download `https://letsencrypt.org/certs/isrgrootx1.pem` and paste the full PEM text into `MQTT_ROOT_CA`. The ESP32 synchronizes its clock with NTP and validates the broker certificate; it does not use insecure TLS mode.
+
+Wi-Fi setup for `main/`:
+
+1. Upload `main/main.ino` and restart the ESP32.
+2. The ESP32 first tries credentials previously saved in flash.
+3. If it is still offline after 15 seconds, connect a phone or PC to `AiMyaong-Setup` (password: `aimyaong123`).
+4. Open `http://192.168.4.1`, enter the 2.4 GHz Wi-Fi SSID/password, and press Connect.
+5. The successful credentials are saved by the ESP32 Wi-Fi stack and reused after restart.
+
+The setup access point closes automatically after the ESP32 joins Wi-Fi. Open the serial monitor at 115200 baud to see its assigned IP and MQTT connection result.
+Send `WIFI_SETUP` in the serial monitor whenever the ESP32 Wi-Fi network needs to be changed.
 
 `dispenser/feed` runs the TB6612 food motor for `amount * 250 ms`, clamped to 300-8000 ms. `dispenser/water` runs the MOSFET water pump for `amount * 50 ms`, clamped to 300-10000 ms. Tune these constants after measuring real output.
 

@@ -10,6 +10,7 @@ constexpr uint8_t MOTOR_PWM_PIN = 27;      // PWMA
 constexpr uint8_t MOTOR_STANDBY_PIN = 23;  // STBY
 
 constexpr uint8_t DEFAULT_MOTOR_SPEED = 160;
+constexpr int FOOD_DISPENSE_DIRECTION = -1;
 constexpr unsigned long MOTOR_COMMAND_TIMEOUT_MS = 800;
 constexpr unsigned long FOOD_MOTOR_MS_PER_AMOUNT = 250;
 constexpr unsigned long FOOD_MOTOR_MIN_RUN_MS = 300;
@@ -108,7 +109,7 @@ void dispenseFoodAmount(int amount) {
   unsigned long runMs = foodRunMsForAmount(amount);
   motorStopAt = millis() + runMs;
   lastMotorCommandMs = 0;
-  driveMotor(1, motorSpeed);
+  driveMotor(FOOD_DISPENSE_DIRECTION, motorSpeed);
 
   Serial.print("ACK FOOD_MOTOR_ON amount=");
   Serial.print(amount);

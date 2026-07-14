@@ -200,9 +200,6 @@ export const api = {
   configurePiWifi: ({
     ssid,
     password,
-    mqttHost,
-    mqttPort = 1883,
-    esp32SetupUrl,
     piApFallback = false,
   }) =>
     request("/api/network/pi-wifi-connect", {
@@ -210,18 +207,12 @@ export const api = {
       body: JSON.stringify({
         ssid,
         password,
-        mqtt_host: mqttHost,
-        mqtt_port: mqttPort,
-        esp32_setup_url: esp32SetupUrl,
         pi_ap_fallback: piApFallback,
       }),
     }),
   configureSharedWifi: ({
     ssid,
     password,
-    mqttHost,
-    mqttPort = 1883,
-    esp32SetupUrl,
     piApFallback = false,
   }) =>
     request("/api/network/shared-wifi", {
@@ -229,9 +220,6 @@ export const api = {
       body: JSON.stringify({
         ssid,
         password,
-        mqtt_host: mqttHost,
-        mqtt_port: mqttPort,
-        esp32_setup_url: esp32SetupUrl,
         pi_ap_fallback: piApFallback,
       }),
     }),
