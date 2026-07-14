@@ -7,7 +7,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from sqlalchemy.engine import URL
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 BACKEND_ENV = Path(__file__).resolve().parents[1] / "backend" / ".env"
@@ -40,22 +39,20 @@ def is_database_configured() -> bool:
 
 if is_database_configured():
     connect_args = {
-        "config_dir": ORACLE_WALLET_DIR,
+        "user": ORACLE_USER,
+        "password": ORACLE_PASSWORD,
+        "dsn": ORACLE_DSN,
         "wallet_location": ORACLE_WALLET_DIR,
     }
+
+    if (Path(ORACLE_WALLET_DIR) / "tnsnames.ora").is_file():
+        connect_args["config_dir"] = ORACLE_WALLET_DIR
 
     if ORACLE_WALLET_PASSWORD:
         connect_args["wallet_password"] = ORACLE_WALLET_PASSWORD
 
-    database_url = URL.create(
-        "oracle+oracledb",
-        username=ORACLE_USER,
-        password=ORACLE_PASSWORD,
-        host=ORACLE_DSN,
-    )
-
     engine = create_engine(
-        database_url,
+        "oracle+oracledb://@",
         connect_args=connect_args,
         pool_pre_ping=True,
     )

@@ -10,7 +10,12 @@ import os
 
 keys = sorted(
     key for key in os.environ
-    if key.startswith("ORACLE_WALLET_B64") or key.startswith("ORACLE_WALLET_GZIP_B64")
+    if (
+        key.startswith("ORACLE_WALLET_B64")
+        or key.startswith("ORACLE_WALLET_GZIP_B64")
+        or key.startswith("ORACLE_EWALLET_PEM_B64")
+        or key.startswith("ORACLE_TNSNAMES_ORA_B64")
+    )
 )
 if not keys:
     print("[entrypoint] No Oracle Wallet payload environment variables are visible", flush=True)
@@ -20,7 +25,50 @@ else:
 PY
 }
 
-if [[ -n "${ORACLE_WALLET_B64:-}" || -n "${ORACLE_WALLET_B64_1:-}" || -n "${ORACLE_WALLET_GZIP_B64:-}" || -n "${ORACLE_WALLET_GZIP_B64_1:-}" ]]; then
+if [[ -n "${ORACLE_EWALLET_PEM_B64:-}" || -n "${ORACLE_EWALLET_PEM_B64_1:-}" ]]; then
+  print_wallet_env_diagnostics
+
+  rm -rf "$ORACLE_WALLET_DIR"
+  mkdir -p "$ORACLE_WALLET_DIR"
+  chmod 700 "$ORACLE_WALLET_DIR"
+
+  python - <<'PY'
+import base64
+import os
+
+wallet_dir = os.path.realpath(os.environ["ORACLE_WALLET_DIR"])
+
+def read_chunks(name):
+    direct = os.environ.get(name, "").strip()
+    if direct:
+        return direct
+
+    chunks = []
+    index = 1
+    while True:
+        value = os.environ.get(f"{name}_{index}")
+        if value is None:
+            break
+        chunks.append(value.strip())
+        index += 1
+    return "".join(chunks)
+
+ewallet_pem = read_chunks("ORACLE_EWALLET_PEM_B64")
+tnsnames_ora = read_chunks("ORACLE_TNSNAMES_ORA_B64")
+
+if not ewallet_pem:
+    raise RuntimeError("ORACLE_EWALLET_PEM_B64 or ORACLE_EWALLET_PEM_B64_1 is required")
+
+with open(os.path.join(wallet_dir, "ewallet.pem"), "wb") as file:
+    file.write(base64.b64decode(ewallet_pem, validate=True))
+
+if tnsnames_ora:
+    with open(os.path.join(wallet_dir, "tnsnames.ora"), "wb") as file:
+        file.write(base64.b64decode(tnsnames_ora, validate=True))
+PY
+
+  find "$ORACLE_WALLET_DIR" -type f -exec chmod 600 {} +
+elif [[ -n "${ORACLE_WALLET_B64:-}" || -n "${ORACLE_WALLET_B64_1:-}" || -n "${ORACLE_WALLET_GZIP_B64:-}" || -n "${ORACLE_WALLET_GZIP_B64_1:-}" ]]; then
   print_wallet_env_diagnostics
 
   rm -rf "$ORACLE_WALLET_DIR"
@@ -76,9 +124,9 @@ if [[ -n "${ORACLE_USER:-}" || -n "${ORACLE_PASSWORD:-}" || -n "${ORACLE_DSN:-}"
   : "${ORACLE_USER:?ORACLE_USER is required}"
   : "${ORACLE_PASSWORD:?ORACLE_PASSWORD is required}"
   : "${ORACLE_DSN:?ORACLE_DSN is required}"
-  if [[ -z "${ORACLE_WALLET_B64:-}" && -z "${ORACLE_WALLET_B64_1:-}" && -z "${ORACLE_WALLET_GZIP_B64:-}" && -z "${ORACLE_WALLET_GZIP_B64_1:-}" ]]; then
+  if [[ -z "${ORACLE_EWALLET_PEM_B64:-}" && -z "${ORACLE_EWALLET_PEM_B64_1:-}" && -z "${ORACLE_WALLET_B64:-}" && -z "${ORACLE_WALLET_B64_1:-}" && -z "${ORACLE_WALLET_GZIP_B64:-}" && -z "${ORACLE_WALLET_GZIP_B64_1:-}" ]]; then
     print_wallet_env_diagnostics
-    echo "ORACLE_WALLET_B64, ORACLE_WALLET_B64_1, ORACLE_WALLET_GZIP_B64, or ORACLE_WALLET_GZIP_B64_1 is required" >&2
+    echo "ORACLE_EWALLET_PEM_B64, ORACLE_EWALLET_PEM_B64_1, ORACLE_WALLET_B64, ORACLE_WALLET_B64_1, ORACLE_WALLET_GZIP_B64, or ORACLE_WALLET_GZIP_B64_1 is required" >&2
     exit 1
   fi
 
@@ -106,7 +154,13 @@ for name in required:
         raise RuntimeError(f"{name} must not include surrounding quotes")
 
 wallet_dir = os.environ["ORACLE_WALLET_DIR"]
-for filename in ("tnsnames.ora", "ewallet.pem"):
+dsn = os.environ["ORACLE_DSN"].strip()
+uses_tns_alias = not dsn.startswith("(") and ":" not in dsn and "/" not in dsn
+required_files = ["ewallet.pem"]
+if uses_tns_alias:
+    required_files.append("tnsnames.ora")
+
+for filename in required_files:
     path = os.path.join(wallet_dir, filename)
     if not os.path.isfile(path):
         raise RuntimeError(f"Oracle Wallet file is missing: {filename}")

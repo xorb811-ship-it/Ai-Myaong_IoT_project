@@ -72,18 +72,15 @@ export const api = {
   getDashboard: () => request("/api/robot/dashboard"),
   getStatus: () => request("/api/robot/status"),
   getStreamUrl: async () => {
-    try {
-      const data = await request("/api/stream/url");
-      return {
-        ...data,
-        url: resolveStreamUrl(data.url),
-      };
-    } catch (error) {
-      if (STREAM_URL) {
-        return { url: resolveStreamUrl(STREAM_URL), mode: "external" };
-      }
-      throw error;
+    if (STREAM_URL) {
+      return { url: resolveStreamUrl(STREAM_URL), mode: "external" };
     }
+
+    const data = await request("/api/stream/url");
+    return {
+      ...data,
+      url: resolveStreamUrl(data.url),
+    };
   },
   getLatestDetections: () => request("/api/vision/detections/latest"),
   getActivityStats: (period = "day", month) => {
