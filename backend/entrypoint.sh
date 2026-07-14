@@ -4,7 +4,25 @@ set -euo pipefail
 export PORT="${PORT:-8000}"
 export ORACLE_WALLET_DIR="${ORACLE_WALLET_DIR:-/tmp/oracle_wallet}"
 
+print_wallet_env_diagnostics() {
+  python - <<'PY'
+import os
+
+keys = sorted(
+    key for key in os.environ
+    if key.startswith("ORACLE_WALLET_B64") or key.startswith("ORACLE_WALLET_GZIP_B64")
+)
+if not keys:
+    print("[entrypoint] No Oracle Wallet payload environment variables are visible", flush=True)
+else:
+    for key in keys:
+        print(f"[entrypoint] Found {key} with {len(os.environ.get(key, ''))} characters", flush=True)
+PY
+}
+
 if [[ -n "${ORACLE_WALLET_B64:-}" || -n "${ORACLE_WALLET_B64_1:-}" || -n "${ORACLE_WALLET_GZIP_B64:-}" || -n "${ORACLE_WALLET_GZIP_B64_1:-}" ]]; then
+  print_wallet_env_diagnostics
+
   rm -rf "$ORACLE_WALLET_DIR"
   mkdir -p "$ORACLE_WALLET_DIR"
   chmod 700 "$ORACLE_WALLET_DIR"
@@ -59,6 +77,7 @@ if [[ -n "${ORACLE_USER:-}" || -n "${ORACLE_PASSWORD:-}" || -n "${ORACLE_DSN:-}"
   : "${ORACLE_PASSWORD:?ORACLE_PASSWORD is required}"
   : "${ORACLE_DSN:?ORACLE_DSN is required}"
   if [[ -z "${ORACLE_WALLET_B64:-}" && -z "${ORACLE_WALLET_B64_1:-}" && -z "${ORACLE_WALLET_GZIP_B64:-}" && -z "${ORACLE_WALLET_GZIP_B64_1:-}" ]]; then
+    print_wallet_env_diagnostics
     echo "ORACLE_WALLET_B64, ORACLE_WALLET_B64_1, ORACLE_WALLET_GZIP_B64, or ORACLE_WALLET_GZIP_B64_1 is required" >&2
     exit 1
   fi

@@ -1,5 +1,3 @@
-# 웹소켓 확인용 (추후 삭제예정)
-
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
@@ -17,14 +15,26 @@ async def broadcast(message: str):
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     active_connections.append(websocket)
-    print(f"✅ 연결 | 현재 {len(active_connections)}명")
+    client = f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown"
+    print(f"[ws] connected {client}; active={len(active_connections)}", flush=True)
 
     try:
         while True:
             data = await websocket.receive_text()
-            print(f"📨 수신: {data}")
-            await websocket.send_text(f"서버 응답: {data}")
+            if data == "ping":
+                await websocket.send_text("pong")
+            else:
+                print(f"[ws] received from {client}: {data}", flush=True)
+                await websocket.send_text(f"server: {data}")
 
-    except WebSocketDisconnect:
-        active_connections.remove(websocket)
-        print(f"❌ 끊김 | 현재 {len(active_connections)}명")
+    except WebSocketDisconnect as exc:
+        print(
+            f"[ws] disconnected {client}; code={exc.code}; reason={exc.reason or '-'}",
+            flush=True,
+        )
+    except Exception as exc:
+        print(f"[ws] error {client}: {type(exc).__name__}: {exc}", flush=True)
+    finally:
+        if websocket in active_connections:
+            active_connections.remove(websocket)
+        print(f"[ws] active={len(active_connections)}", flush=True)
