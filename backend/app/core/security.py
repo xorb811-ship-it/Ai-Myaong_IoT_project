@@ -5,7 +5,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret")
-EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "7"))
+EXPIRE_DAYS = int((os.getenv("JWT_EXPIRE_DAYS") or "7").strip() or "7")
 ALGORITHM = "HS256"
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

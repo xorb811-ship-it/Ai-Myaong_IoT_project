@@ -38,7 +38,7 @@ from database.user import User
 
 router = APIRouter(prefix="/api/vision", tags=["vision"])
 
-ACTIVITY_SCORE_MAX = max(1.0, float(os.getenv("ACTIVITY_SCORE_MAX", "1500")))
+ACTIVITY_SCORE_MAX = max(1.0, float((os.getenv("ACTIVITY_SCORE_MAX") or "1500").strip() or "1500"))
 ACTIVITY_TIME_SLOTS = (
     ("DAWN", "새벽"),
     ("MORNING", "오전"),

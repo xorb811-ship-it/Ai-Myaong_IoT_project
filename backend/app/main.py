@@ -64,7 +64,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-database = Database(os.getenv("DATABASE_PATH", "./backend/aimyaong.sqlite3"))
+database_path = (os.getenv("DATABASE_PATH") or "./backend/aimyaong.sqlite3").strip() or "./backend/aimyaong.sqlite3"
+database = Database(database_path)
 mqtt_client = MqttClient()
 simulator = DeviceSimulator()
 

@@ -18,7 +18,7 @@ class DeviceSimulator:
         self.sensor_updated_at = 0.0  # 후방 센서값 마지막 수신 시각(monotonic) — staleness 판정용
         # 후방 초음파 노이즈(스파이크) 제거용 중앙값 필터 상태
         self._rear_window: list[int] = []                       # 최근 거리값 버퍼
-        self._rear_window_size = max(1, int(os.getenv("REAR_FILTER_WINDOW", "5")))
+        self._rear_window_size = max(1, int((os.getenv("REAR_FILTER_WINDOW") or "5").strip() or "5"))
         self._rear_obstacle = False                             # 필터값 기반 장애물 상태(히스테리시스) — UI 표시용
         self._rear_obstacle_immediate = False                   # 생(raw)값 기반 즉시 위험 — 안전 차단용(필터 우회)
 
