@@ -2,8 +2,10 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.mqtt.mqtt_client import MqttClient
 from app.routers import (
@@ -27,6 +29,9 @@ from app.services.robot_service import RobotService
 from app.services.simulator import DeviceSimulator
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+DEFAULT_FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+FRONTEND_DIST = Path(os.getenv("FRONTEND_DIST_DIR", DEFAULT_FRONTEND_DIST)).resolve()
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -82,6 +87,9 @@ app.include_router(alerts.router)
 app.include_router(device.router)
 app.include_router(vision.router)
 
+if (FRONTEND_DIST / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+
 
 @app.on_event("startup")
 def startup() -> None:
@@ -115,6 +123,25 @@ def shutdown() -> None:
     mqtt_client.stop()
 
 
-@app.get("/")
+@app.get("/api/health")
 def health():
     return {"name": "Ai-Myaong", "status": "ok", "simulation": mqtt_client.simulation_mode}
+
+
+@app.get("/{full_path:path}")
+def serve_frontend(full_path: str):
+    index_file = FRONTEND_DIST / "index.html"
+    if not index_file.is_file():
+        if full_path == "":
+            return health()
+        raise HTTPException(status_code=404, detail="Frontend build was not found")
+
+    requested_file = (FRONTEND_DIST / full_path).resolve()
+    if (
+        full_path
+        and FRONTEND_DIST in requested_file.parents
+        and requested_file.is_file()
+    ):
+        return FileResponse(requested_file)
+
+    return FileResponse(index_file)

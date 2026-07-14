@@ -5,7 +5,7 @@ function defaultApiBaseUrl() {
   if (!host || host === "localhost" || host === "127.0.0.1") {
     return "http://127.0.0.1:8000/";
   }
-  return `${window.location.protocol}//${host}:${DEFAULT_BACKEND_PORT}/`;
+  return `${window.location.origin}/`;
 }
 
 export function getApiBaseUrl() {

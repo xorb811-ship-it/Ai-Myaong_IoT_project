@@ -1,0 +1,54 @@
+# VCS / OS noise
+.git
+.gitignore
+.gitattributes
+.DS_Store
+
+# Local env / secrets
+.env
+**/.env
+**/.env.*
+oracle_wallet/
+
+# Dependencies and build output
+node_modules/
+**/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/legacy-next/.next/
+frontend/legacy-next/node_modules/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local databases / runtime files
+*.sqlite3
+backend/*.sqlite3
+backend/backend/*.sqlite3
+
+# Firmware / device-side projects not needed by the backend/frontend image
+arduino-uno/
+esp32/
+raspberrypi/
+
+# Desktop/mobile apps are separate deployables
+desktop/
+mobile/
+
+# Project docs and local setup helpers are not needed in the image
+docs/
+setup_program/
+setup-python-venv.bat
+CURRENT_PROJECT_STATUS.md
+
+# Large model and archive files should never ride along accidentally
+*.pt
+*.onnx
+*.zip
+*.tar
+*.tar.gz
