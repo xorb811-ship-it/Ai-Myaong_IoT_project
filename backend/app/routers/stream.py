@@ -32,13 +32,16 @@ def stream_url():
     if camera_stream_url and runtime_env("CAMERA_PROXY", "false").lower() != "true":
         return {"url": camera_stream_url, "mode": "external", "source": "auto"}
 
-    if camera_stream_url or runtime_env("SIMULATION_MODE", "true").lower() != "true":
+    if camera_stream_url:
         return {"url": f"{stream_prefix}/live.mjpg", "mode": "live", "source": "proxy"}
+
+    if _opencv_camera_enabled():
+        return {"url": f"{stream_prefix}/live.mjpg", "mode": "live", "source": "opencv"}
 
     if runtime_env("SIMULATION_MODE", "true").lower() == "true":
         return {"url": f"{stream_prefix}/simulated.mjpg", "mode": "simulated", "source": "simulated"}
 
-    return {"url": f"{stream_prefix}/live.mjpg", "mode": "live", "source": "proxy"}
+    return {"url": f"{stream_prefix}/simulated.mjpg", "mode": "simulated", "source": "fallback"}
 
 
 @router.get("/live.mjpg")
@@ -47,6 +50,12 @@ def live_mjpeg():
     if camera_stream_url:
         return StreamingResponse(
             _proxy_mjpeg(camera_stream_url),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+        )
+
+    if not _opencv_camera_enabled():
+        return StreamingResponse(
+            _frame_generator(),
             media_type="multipart/x-mixed-replace; boundary=frame",
         )
 
@@ -247,7 +256,11 @@ def _opencv_mjpeg() -> Iterator[bytes]:
         yield from _frame_generator()
         return
 
-    source = runtime_env("CAMERA_SOURCE", "0").strip()
+    source = runtime_env("CAMERA_SOURCE", "").strip()
+    if not source:
+        yield from _frame_generator()
+        return
+
     capture_source = int(source) if source.isdigit() else source
     if isinstance(capture_source, int) and hasattr(cv2, "CAP_AVFOUNDATION"):
         capture = cv2.VideoCapture(capture_source, cv2.CAP_AVFOUNDATION)
@@ -293,3 +306,9 @@ def _opencv_mjpeg() -> Iterator[bytes]:
     finally:
         capture.release()
         _camera_lock.release()
+
+
+def _opencv_camera_enabled() -> bool:
+    if runtime_env("CAMERA_OPENCV_ENABLED", "false").lower() != "true":
+        return False
+    return bool(runtime_env("CAMERA_SOURCE", "").strip())

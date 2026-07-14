@@ -169,4 +169,8 @@ print("[entrypoint] Oracle environment and Wallet files validated", flush=True)
 PY
 fi
 
-exec python -m uvicorn app.main:app --host 0.0.0.0 --port "$PORT" --no-access-log
+if [[ "$#" -eq 0 ]]; then
+  set -- python -m uvicorn app.main:app --host 0.0.0.0 --port "$PORT" --no-access-log
+fi
+
+exec "$@"

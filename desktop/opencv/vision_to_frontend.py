@@ -81,29 +81,30 @@ def resolve_class_filter():
 
 
 def mjpeg_frame_generator(url):
-    buffer = b""
-    response = requests.get(url, stream=True, timeout=10)
-    response.raise_for_status()
+    while True:
+        buffer = b""
+        try:
+            with requests.get(url, stream=True, timeout=(5, 10)) as response:
+                response.raise_for_status()
+                for chunk in response.iter_content(chunk_size=4096):
+                    if not chunk:
+                        continue
 
-    try:
-        for chunk in response.iter_content(chunk_size=4096):
-            if not chunk:
-                continue
+                    buffer += chunk
+                    start = buffer.find(b"\xff\xd8")
+                    end = buffer.find(b"\xff\xd9")
 
-            buffer += chunk
-            start = buffer.find(b"\xff\xd8")
-            end = buffer.find(b"\xff\xd9")
+                    if start == -1 or end == -1 or end <= start:
+                        continue
 
-            if start == -1 or end == -1 or end <= start:
-                continue
-
-            jpg = buffer[start:end + 2]
-            buffer = buffer[end + 2:]
-            frame = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
-            if frame is not None:
-                yield frame
-    finally:
-        response.close()
+                    jpg = buffer[start:end + 2]
+                    buffer = buffer[end + 2:]
+                    frame = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
+                    if frame is not None:
+                        yield frame
+        except requests.RequestException as error:
+            print(f"[Vision] stream lost: {error}", flush=True)
+            time.sleep(3)
 
 
 def opencv_frame_generator(source):

@@ -10,7 +10,7 @@ COPY frontend ./
 ARG VITE_API_BASE_URL
 ARG VITE_WS_URL
 ARG VITE_MQTT_BROKER_URL
-ARG VITE_STREAM_URL
+ARG VITE_STREAM_URL=https://muscles-sight-readily-added.trycloudflare.com/
 ARG VITE_VISION_FLIP_HORIZONTAL
 ARG VITE_ESP32_SETUP_URL
 ARG VITE_ESP32_MQTT_HOST
@@ -45,12 +45,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        libgl1 \
-        libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY backend/requirements.txt /app/backend/requirements.txt
 
 RUN pip install --no-cache-dir --upgrade pip \
@@ -67,3 +61,4 @@ WORKDIR /app/backend
 EXPOSE 8000
 
 ENTRYPOINT ["/app/backend/entrypoint.sh"]
+CMD ["sh", "-c", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --no-access-log"]
