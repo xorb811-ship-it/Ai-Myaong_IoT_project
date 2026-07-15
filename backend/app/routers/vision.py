@@ -7,8 +7,9 @@ import subprocess
 import sys
 from time import time, monotonic
 from typing import Literal
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -113,11 +114,31 @@ class VisionRevealRequest(BaseModel):
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _configured_media_dir() -> Path:
+    raw = (os.getenv("VISION_MEDIA_DIR") or "/tmp/aimyaong_vision_media").strip()
+    path = Path(raw)
+    return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+UPLOADED_MEDIA_DIR = _configured_media_dir()
 ALLOWED_MEDIA_DIRS = [
     PROJECT_ROOT / "desktop" / "opencv" / "captures",
     PROJECT_ROOT / "desktop" / "opencv" / "clips",
     PROJECT_ROOT / "desktop" / "opencv" / "emergency_clips",
+    UPLOADED_MEDIA_DIR,
 ]
+ALLOWED_MEDIA_EXTENSIONS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".webm",
+    ".mp4",
+    ".mov",
+    ".m4v",
+}
 
 _latest_detection: dict = {
     "frame_width": 0,
@@ -179,6 +200,91 @@ def _resolve_media_path(raw_path: str) -> Path:
         raise HTTPException(status_code=404, detail="media file not found")
 
     return resolved
+
+
+def _safe_upload_name(file: UploadFile) -> str:
+    suffix = Path(file.filename or "").suffix.lower()
+    guessed = mimetypes.guess_extension(file.content_type or "") or suffix
+    if guessed == ".jpe":
+        guessed = ".jpg"
+    extension = guessed if guessed in ALLOWED_MEDIA_EXTENSIONS else suffix
+    if extension not in ALLOWED_MEDIA_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="unsupported media type")
+    return f"{uuid4().hex}{extension}"
+
+
+def _save_uploaded_media(alert_id: int, file: UploadFile) -> Path:
+    target_dir = UPLOADED_MEDIA_DIR / str(alert_id)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / _safe_upload_name(file)
+
+    with target.open("wb") as output:
+        while True:
+            chunk = file.file.read(1024 * 1024)
+            if not chunk:
+                break
+            output.write(chunk)
+
+    if target.stat().st_size <= 0:
+        target.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="empty media file")
+
+    return target.resolve()
+
+
+def _attach_media_path_to_alert(
+    alert_id: int,
+    media_path: Path,
+    db: Session,
+) -> dict:
+    active_user_id = _control_state.get("active_user_id")
+    if active_user_id is None:
+        raise HTTPException(status_code=409, detail="Active vision user is required.")
+
+    alert = (
+        db.query(Alert)
+        .filter(Alert.alert_id == alert_id, Alert.user_id == active_user_id)
+        .first()
+    )
+    if not alert or not alert.alert_type.startswith("vision."):
+        raise HTTPException(status_code=404, detail="Vision alert not found.")
+
+    resolved_path = _resolve_media_path(str(media_path))
+    try:
+        message = json.loads(alert.message or "{}")
+    except json.JSONDecodeError:
+        message = {"desc": alert.message or ""}
+    message["media_path"] = str(resolved_path)
+    message["storage_path"] = str(resolved_path)
+    alert.message = json.dumps(message, ensure_ascii=False)
+
+    event_type = _event_type_from_alert(alert.alert_type)
+    if event_type == "away_person":
+        clip = (
+            db.query(Clip)
+            .filter(Clip.user_id == active_user_id, Clip.file_path == str(resolved_path))
+            .first()
+        )
+        if not clip:
+            db.add(Clip(user_id=active_user_id, file_path=str(resolved_path)))
+    else:
+        emergency_clip = (
+            db.query(EmergencyClip)
+            .filter(EmergencyClip.alert_id == alert.alert_id)
+            .first()
+        )
+        if emergency_clip:
+            emergency_clip.file_path = str(resolved_path)
+        else:
+            db.add(EmergencyClip(alert_id=alert.alert_id, file_path=str(resolved_path)))
+
+    db.commit()
+    db.refresh(alert)
+    print(
+        f"[VisionEvent] media attached alert_id={alert.alert_id} path={resolved_path}",
+        flush=True,
+    )
+    return _alert_to_vision_event(alert)
 
 
 def _vision_alert_type(event_type: str) -> str:
@@ -445,54 +551,18 @@ def attach_event_media(
     payload: VisionEventMediaUpdate,
     db: Session = Depends(get_db),
 ):
-    active_user_id = _control_state.get("active_user_id")
-    if active_user_id is None:
-        raise HTTPException(status_code=409, detail="Active vision user is required.")
-
-    alert = (
-        db.query(Alert)
-        .filter(Alert.alert_id == alert_id, Alert.user_id == active_user_id)
-        .first()
-    )
-    if not alert or not alert.alert_type.startswith("vision."):
-        raise HTTPException(status_code=404, detail="Vision alert not found.")
-
     resolved_path = _resolve_media_path(payload.storage_path)
-    try:
-        message = json.loads(alert.message or "{}")
-    except json.JSONDecodeError:
-        message = {"desc": alert.message or ""}
-    message["media_path"] = str(resolved_path)
-    message["storage_path"] = str(resolved_path)
-    alert.message = json.dumps(message, ensure_ascii=False)
+    return _attach_media_path_to_alert(alert_id, resolved_path, db)
 
-    event_type = _event_type_from_alert(alert.alert_type)
-    if event_type == "away_person":
-        clip = (
-            db.query(Clip)
-            .filter(Clip.user_id == active_user_id, Clip.file_path == str(resolved_path))
-            .first()
-        )
-        if not clip:
-            db.add(Clip(user_id=active_user_id, file_path=str(resolved_path)))
-    else:
-        emergency_clip = (
-            db.query(EmergencyClip)
-            .filter(EmergencyClip.alert_id == alert.alert_id)
-            .first()
-        )
-        if emergency_clip:
-            emergency_clip.file_path = str(resolved_path)
-        else:
-            db.add(EmergencyClip(alert_id=alert.alert_id, file_path=str(resolved_path)))
 
-    db.commit()
-    db.refresh(alert)
-    print(
-        f"[VisionEvent] media attached alert_id={alert.alert_id} path={resolved_path}",
-        flush=True,
-    )
-    return _alert_to_vision_event(alert)
+@router.post("/events/{alert_id}/media/upload")
+def upload_event_media(
+    alert_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    saved_path = _save_uploaded_media(alert_id, file)
+    return _attach_media_path_to_alert(alert_id, saved_path, db)
 
 
 @router.post("/activity")

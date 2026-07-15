@@ -58,7 +58,7 @@ def resolve_capture_source():
 
 
 def resolve_backend_url():
-    return os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000").strip().rstrip("/")
+    return os.getenv("BACKEND_API_URL", "https://astonishing-wonder-production-a2e3.up.railway.app/").strip().rstrip("/")
 
 
 def resolve_model_path():
@@ -654,6 +654,17 @@ def post_event(backend_url, event_type, title, message, source=None, storage_pat
 
 
 def post_event_media(backend_url, alert_id, storage_path):
+    path = Path(storage_path)
+    if path.exists() and path.is_file():
+        with path.open("rb") as file_obj:
+            response = requests.post(
+                f"{backend_url}/api/vision/events/{alert_id}/media/upload",
+                files={"file": (path.name, file_obj)},
+                timeout=max(10, DB_API_TIMEOUT),
+            )
+        response.raise_for_status()
+        return response.json()
+
     response = requests.post(
         f"{backend_url}/api/vision/events/{alert_id}/media",
         json={"storage_path": str(storage_path)},
@@ -957,14 +968,15 @@ def main():
                         capture_path = save_capture(raw_frame)
                         if capture_path:
                             try:
-                                post_event(
+                                event = post_event(
                                     backend_url,
                                     "capture_saved",
                                     "캡처 저장됨",
                                     "현재 카메라 화면을 이미지로 저장했어요.",
                                     source,
-                                    capture_path,
                                 )
+                                if event.get("id"):
+                                    post_event_media(backend_url, event["id"], capture_path)
                             except requests.RequestException as error:
                                 if now - last_event_error_at > 5:
                                     print(f"[Vision] Event post failed: {error}")
@@ -992,14 +1004,15 @@ def main():
                     seconds = duration % 60
                     duration_text = f"{minutes}분 {seconds}초" if minutes else f"{seconds}초"
                     try:
-                        post_event(
+                        event = post_event(
                             backend_url,
                             "clip_saved",
                             "클립 저장 완료",
                             f"영상 촬영 {start_text} 시작, {end_text} 종료. 총 {duration_text} 녹화했어요.",
                             source,
-                            clip["path"],
                         )
+                        if event.get("id"):
+                            post_event_media(backend_url, event["id"], clip["path"])
                     except requests.RequestException as error:
                         if now - last_event_error_at > 5:
                             print(f"[Vision] Event post failed: {error}")

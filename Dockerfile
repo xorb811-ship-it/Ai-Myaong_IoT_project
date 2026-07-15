@@ -10,7 +10,7 @@ COPY frontend ./
 ARG VITE_API_BASE_URL
 ARG VITE_WS_URL
 ARG VITE_MQTT_BROKER_URL
-ARG VITE_STREAM_URL=https://holidays-bids-samuel-increases.trycloudflare.com/
+ARG VITE_STREAM_URL=https://holidays-bids-samuel-inceases.trycloudflare.com/
 ARG VITE_VISION_FLIP_HORIZONTAL
 ARG VITE_ESP32_SETUP_URL
 ARG VITE_ESP32_MQTT_HOST
