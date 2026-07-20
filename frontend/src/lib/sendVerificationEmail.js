@@ -6,7 +6,7 @@ import emailjs from '@emailjs/browser'
  * (어차피 브라우저 번들에 노출됨). .env 가 없는 배포 빌드/팀원 환경에서도
  * 실제 메일 발송이 되도록 기본값을 둔다.
  * ⚠️ 공개값이라 제3자가 발송 할당량을 도용할 수 있음 → 남용 시 키 재발급. */
-const DEFAULT_SERVICE_ID = 'service_eu33sas'
+const DEFAULT_SERVICE_ID = 'service_ys3gyas'
 const DEFAULT_TEMPLATE_ID = 'template_5517zca'
 const DEFAULT_PUBLIC_KEY = 'QpoSG0GYOKglql4ec'
 
