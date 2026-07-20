@@ -34,6 +34,8 @@ _scheduler_lock = threading.Lock()
 _scheduler_thread = None
 _lock_socket = None
 _SCHED_LOCK_PORT = 8771
+WATER_SCHEDULE_MIN_SECONDS = 30
+WATER_SCHEDULE_MAX_SECONDS = 90
 
 
 def _parse(raw):
@@ -60,6 +62,13 @@ def _normalize_amount(value):
     except (TypeError, ValueError):
         return 0.0
     return float(int(amount)) if amount.is_integer() else amount
+
+
+def _normalize_water_seconds(value):
+    amount = int(round(_normalize_amount(value)))
+    if amount <= 0:
+        return 0
+    return max(WATER_SCHEDULE_MIN_SECONDS, min(WATER_SCHEDULE_MAX_SECONDS, amount))
 
 
 def _has_feed_log_this_minute(db, user_id, pet_id, minute_start, minute_end):
@@ -158,11 +167,17 @@ def _run_once(feed_service, hhmm):
                     continue
 
                 handled_feed.add(feed_key)
+                # 이 행은 '그 분에 이미 배식했다'는 중복 방지 기록이다(_has_feed_log_this_minute).
+                # 실제 배식량은 ESP32 가 오거 정지 후 저울로 재서 dispenser/dispensed 로 알리고,
+                # DispenserLogger 가 그 실측값을 FEED_LOGS 에 따로 쌓는다. 여기서 지시값(amount)을
+                # 같이 적으면 배식 1회에 행이 2개 생겨 통계가 2배로 뜬다.
+                # 지시값은 어차피 허구다 — 펌웨어는 amount×250ms 로 오거를 돌릴 뿐이라
+                # 25g 을 지시해도 실제로 몇 g 이 나갔는지는 저울만 안다.
                 db.add(
                     FeedLog(
                         user_id=settings.user_id,
                         pet_id=pet_id,
-                        food_amount_g=amount,
+                        food_amount_g=0,
                         feed_type="auto",
                         created_at=minute_start,
                     )
@@ -178,7 +193,7 @@ def _run_once(feed_service, hhmm):
                 if item.get("on", True) is False or str(item.get("time")) != hhmm:
                     continue
 
-                amount = _normalize_amount(item.get("amount"))
+                amount = _normalize_water_seconds(item.get("amount"))
                 if amount <= 0:
                     continue
 
@@ -194,27 +209,44 @@ def _run_once(feed_service, hhmm):
                     continue
 
                 handled_water.add(water_key)
+                # 스케줄의 amount 는 '펌프를 몇 초 돌릴지'다(ml 이 아니다). 물통이 저수조 겸
+                # 음수대라 펌프를 돌려도 물이 통 밖으로 나가지 않아 급수량 ml 이 성립하지 않는다.
+                # 그래서 이 행은 '그 분에 이미 급수했다'는 중복 방지 기록으로만 쓰고,
+                # 양은 0 으로 둔다 — 초를 ml 칸에 적으면 통계·최근활동이 "물 10ml" 라고 거짓말한다.
+                # 실제로 마신 양은 물통 무게가 줄어든 만큼을 water_type='consumed' 로 따로 쌓는다.
                 db.add(
                     WaterLog(
                         user_id=settings.user_id,
                         pet_id=pet_id,
-                        water_amount_ml=amount,
-                        water_type="auto",
+                        water_amount_ml=0,
+                        water_type="auto_pending",
                         created_at=minute_start,
                     )
                 )
                 db.flush()
                 if feed_service:
                     try:
-                        feed_service.water(int(round(amount)))
-                    except Exception:
-                        pass
+                        result = feed_service.water(
+                            amount,
+                            source="auto",
+                            user_id=settings.user_id,
+                            pet_id=pet_id,
+                        )
+                        print(
+                            f"[FeedScheduler] scheduled water sent "
+                            f"user={settings.user_id} pet={pet_id} "
+                            f"amount={amount} request={result.get('request_id')}",
+                            flush=True,
+                        )
+                    except Exception as error:
+                        print(f"[FeedScheduler] scheduled water send failed: {error}", flush=True)
 
         db.commit()
     except IntegrityError:
         db.rollback()
     except Exception as error:
         db.rollback()
+        print(f"[FeedScheduler] run failed at {hhmm}: {error}", flush=True)
     finally:
         db.close()
 

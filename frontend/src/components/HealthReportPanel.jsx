@@ -495,6 +495,7 @@ function buildCategories(advice) {
       title: "핵심 관찰",
       icon: <Search className="w-[18px] h-[18px]" />,
       img: "/ai-analysis/cat_search.png",
+      imgClass: "w-16 h-16 -bottom-1 -right-1 -scale-x-100",
       tone: TONE.coral,
       items: advice.key_findings,
       preview: advice.key_findings[0]?.title,

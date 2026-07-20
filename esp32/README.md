@@ -74,6 +74,7 @@ Wi-Fi setup for `main/`:
 
 The setup access point closes automatically after the ESP32 joins Wi-Fi. Open the serial monitor at 115200 baud to see its assigned IP and MQTT connection result.
 Send `WIFI_SETUP` in the serial monitor whenever the ESP32 Wi-Fi network needs to be changed.
+If Wi-Fi is connected but HiveMQ remains unavailable for 30 seconds, the ESP32 also opens `AiMyaong-Setup` automatically so its registered Wi-Fi can be changed.
 
 `dispenser/feed` runs the TB6612 food motor for `amount * 250 ms`, clamped to 300-8000 ms. `dispenser/water` runs the MOSFET water pump for `amount * 50 ms`, clamped to 300-10000 ms. Tune these constants after measuring real output.
 

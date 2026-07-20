@@ -16,6 +16,7 @@ class SettingsResponse(BaseModel):
     robot_serial: Optional[str] = None
     mqtt_host: Optional[str] = None
     esp32_setup_url: Optional[str] = None
+    onboarded: str = "N"  # 최초 온보딩 안내 완료 여부 (Y/N)
 
     class Config:
         from_attributes = True
@@ -35,3 +36,4 @@ class SettingsUpdate(BaseModel):
     robot_serial: Optional[str] = None
     mqtt_host: Optional[str] = None
     esp32_setup_url: Optional[str] = None
+    onboarded: Optional[str] = None  # 최초 온보딩 안내 완료 여부 (Y/N)

@@ -37,7 +37,7 @@ import {
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
 import { useAccount, petAgeLabel, speciesLabel, addPet, getAccount, saveAccount } from "../lib/accountRepository";
 import { AddPetModal } from "../components/AddPetModal";
-import { useNotifications, unreadCount, timeAgo } from "../lib/notificationRepository";
+import { useNotifications, unreadCount, timeAgo, addNotification } from "../lib/notificationRepository";
 import { useFeedSettings } from "../lib/dispenserSettings";
 import { toApiPet, fromApiPet } from "../lib/petMap";
 import { mapVisionEventForList } from "../lib/visionEventMapper";
@@ -110,6 +110,14 @@ const SHORTCUTS = [
     label: "이상 행동 감지",
     icon: ShieldAlert,
     tone: "bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))] border-[rgb(var(--brand-warning-ink)/0.3)]",
+  },
+  // 디스펜서 긴급 정지 — 사료 오거는 최대 8초 돌기 때문에 디스펜서 화면까지 이동할
+  // 시간이 없다. 여기서 바로 멈출 수 있어야 한다. 구동 중이 아니면 눌러도 무해하다.
+  {
+    id: "dispenser-stop",
+    label: "디스펜서 정지",
+    icon: X,
+    tone: "bg-brand-danger/15 text-brand-danger border-brand-danger/40",
   },
 ];
 
@@ -250,22 +258,31 @@ export function Dashboard() {
   }, [refreshLogs]);
 
   const recentActivity = useMemo(() => {
-    const feed = (recentLogs.feed || []).map((x) => ({
-      key: `f-${x.created_at}-${x.amount_g}`,
-      icon: UtensilsCrossed,
-      tone: "primary",
-      title: FEED_TYPE_LABEL[x.feed_type] || "배식 완료",
-      desc: `사료 ${Math.round(Number(x.amount_g) || 0)}g`,
-      t: new Date(x.created_at).getTime(),
-    }));
-    const water = (recentLogs.water || []).map((x) => ({
-      key: `w-${x.created_at}-${x.amount_ml}`,
-      icon: Droplets,
-      tone: "brown",
-      title: WATER_TYPE_LABEL[x.water_type] || "급수 완료",
-      desc: `물 ${Math.round(Number(x.amount_ml) || 0)}ml`,
-      t: new Date(x.created_at).getTime(),
-    }));
+    // 0g 행은 자동 배식 스케줄러가 남기는 '이 분에 이미 배식함' 잠금 기록이라 보여줄 게 없다.
+    // 실제 배식량은 ESP32 가 저울로 잰 값이 별도 행으로 들어온다. (물 0ml 도 같은 이유)
+    const feed = (recentLogs.feed || [])
+      .filter((x) => (Number(x.amount_g) || 0) > 0)
+      .map((x) => ({
+        key: `f-${x.created_at}-${x.amount_g}`,
+        icon: UtensilsCrossed,
+        tone: "primary",
+        title: FEED_TYPE_LABEL[x.feed_type] || "배식 완료",
+        desc: `사료 ${Math.round(Number(x.amount_g) || 0)}g`,
+        t: new Date(x.created_at).getTime(),
+      }));
+    // 0ml 행은 자동 급수 스케줄러가 '이 분에 이미 급수했다'를 표시하려고 남기는 잠금 기록이다.
+    // 물통이 저수조 겸 음수대라 펌프를 돌려도 물이 통에서 줄지 않아 급수량 ml 이 없다.
+    // 활동 기록에 "물 0ml" 로 띄울 내용이 아니라 걸러낸다. (실제 마신 양은 water_type='consumed')
+    const water = (recentLogs.water || [])
+      .filter((x) => (Number(x.amount_ml) || 0) > 0)
+      .map((x) => ({
+        key: `w-${x.created_at}-${x.amount_ml}`,
+        icon: Droplets,
+        tone: "brown",
+        title: WATER_TYPE_LABEL[x.water_type] || "급수 완료",
+        desc: `물 ${Math.round(Number(x.amount_ml) || 0)}ml`,
+        t: new Date(x.created_at).getTime(),
+      }));
     return [...feed, ...water]
       .sort((a, b) => b.t - a.t)
       .slice(0, 30)
@@ -496,6 +513,8 @@ export function Dashboard() {
   });
   const [abnormalDetection, setAbnormalDetection] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  // 정지 버튼이 눌린 직후 잠깐 켜지는 표시 (id | null)
+  const [stopFlash, setStopFlash] = useState(null);
 
   // settings DB 에서 외출모드 동기화 (로그인 상태면 DB값으로 반영)
   useEffect(() => {
@@ -563,24 +582,39 @@ export function Dashboard() {
   const handleShortcut = async (id) => {
     if (id === "away") return toggleAway();
     if (id === "abnormal") return toggleAbnormalDetection();
+    // 긴급 정지는 busyId 가드를 타지 않는다 — 배식 요청이 진행 중이라는 이유로
+    // 정지가 막히면 정작 멈춰야 할 순간에 못 멈춘다.
+    if (id === "dispenser-stop") {
+      // 서버 응답을 기다리지 않고 바로 반응한다 — 눌렀는데 아무 일도 안 일어나는
+      // 순간이 있으면 급한 상황에 연타하게 된다.
+      setStopFlash(id);
+      // animate-ping 이 1초 주기라, 파형이 한 번 온전히 퍼지고 사라질 만큼 유지한다
+      window.setTimeout(() => setStopFlash(null), 1000);
+      try {
+        await api.dispenserStop();
+        showToast("⏹ 디스펜서를 정지했어요");
+        // 명령이 실제로 나간 뒤에만 남긴다 — 실패했는데 '정지됨'이 기록되면 안 된다
+        addNotification({
+          type: "dispenser_stopped",
+          title: "디스펜서 정지",
+          desc: "배식/급수를 중간에 멈췄어요.",
+          link: "/dispenser",
+        });
+      } catch {
+        showToast("정지 실패 — 기기 연결을 확인해 주세요");
+      }
+      return;
+    }
     if (busyId) return;
     setBusyId(id);
     try {
       if (id === "feed") {
         await api.dispenserFeed(feed.food);
-        // 최근 활동에 즉시 반영(낙관적 추가) → 새로고침 없이 바로 보임
-        setRecentLogs((prev) => ({
-          ...prev,
-          feed: [
-            { created_at: new Date().toISOString(), amount_g: feed.food },
-            ...(prev.feed || []),
-          ],
-        }));
-        // DB 기록 후 서버 기준으로 재동기화(실제 created_at 등)
-        api
-          .createFeedLog({ amount_g: feed.food, feed_type: "quick" })
-          .then(() => refreshLogs())
-          .catch(() => {});
+        // 통계 기록은 백엔드가 한다 — ESP32 가 저울로 잰 실제 배출량이 도착하면
+        // 그때 FEED_LOGS 에 쌓인다. 여기서 지시값(feed.food)을 같이 남기면
+        // 가짜 기록과 실측 기록이 이중으로 쌓인다.
+        // 배출 + 저울 안정화가 끝나야 기록되므로 조금 뒤에 다시 불러온다.
+        window.setTimeout(() => refreshLogs(), 12000);
         showToast(`🍚 사료 ${feed.food}g를 배식했어요`);
         // 배식은 '일상'이라 알림(경고)으로 보내지 않음 → 최근 활동/통계로만 표현
       }
@@ -765,6 +799,7 @@ export function Dashboard() {
       {/* 1.5) AI 건강 분석 진입 — 고양이 배너 (public/ai-analysis/AICAT.png) */}
       <button
         type="button"
+        data-tour="dash-health"
         onClick={() => (pet ? navigate("/health-report/0") : showToast("🐾 반려동물을 먼저 등록해 주세요"))}
         className="group mt-4 block w-full text-left touch-active"
       >
@@ -826,7 +861,8 @@ export function Dashboard() {
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-3">
           빠른 작업
         </h3>
-        <div className="grid grid-cols-3 gap-3">
+        {/* 4개가 한 줄에 — 아이콘/글씨를 살짝 줄여 좁은 화면에서도 안 접힌다 */}
+        <div className="grid grid-cols-4 gap-2">
           {SHORTCUTS.map(({ id, label, icon: Icon, tone }) => {
             const active =
               (id === "away" && awayMode) ||
@@ -841,12 +877,24 @@ export function Dashboard() {
                 disabled={isBusy}
                 className="flex flex-col items-center gap-2 touch-active disabled:opacity-60"
               >
-                <span
-                  className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-soft border border-dashed transition-colors ${toneCls} ${isBusy ? "animate-pulse" : ""}`}
-                >
-                  <Icon className="w-6 h-6" />
+                {/* 정지를 누르면 파형이 퍼져나가고 꽉 찬 빨강으로 차오르며 눌린다.
+                 * 여기는 자르는 컨테이너가 없어서 파형이 온전히 퍼진다. */}
+                <span className="relative">
+                  {stopFlash === id && (
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 rounded-3xl bg-brand-danger animate-ping"
+                    />
+                  )}
+                  <span
+                    className={`relative w-14 h-14 rounded-3xl flex items-center justify-center shadow-soft border border-dashed transition-all duration-300 ${toneCls} ${isBusy ? "animate-pulse" : ""} ${
+                      stopFlash === id ? "!bg-brand-danger !text-white !border-white/50 scale-90" : ""
+                    }`}
+                  >
+                    <Icon className="w-6 h-6" />
+                  </span>
                 </span>
-                <span className="text-[11px] font-semibold text-brand-brown text-center leading-tight">
+                <span className="text-[10px] font-semibold text-brand-brown text-center leading-tight">
                   {id === "away"
                     ? awayMode
                       ? "외출 모드 ON"

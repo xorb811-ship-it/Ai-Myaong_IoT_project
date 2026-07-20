@@ -2,7 +2,7 @@ import json
 import socket
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 
 from app.runtime_config import runtime_env
 
@@ -22,7 +22,22 @@ class MqttClient:
         self._connect_event = threading.Event()
         self._lock = threading.RLock()
         self._last_config_check_at = 0.0
+        self._handlers: dict[str, Callable[[dict[str, Any]], None]] = {}
         self._refresh_config()
+
+    def on_topic(
+        self,
+        topic: str,
+        handler: Callable[[dict[str, Any]], None],
+        skip_retained: bool = False,
+    ) -> None:
+        """토픽 수신 핸들러 등록. 등록된 토픽은 접속할 때마다 자동으로 구독한다.
+
+        skip_retained: 브로커에 retain 된 값을 무시한다. retain 은 '마지막에 이랬다'는
+        기록이라 접속하자마자 배달되는데, '지금 구동 중인가' 같은 순간 상태에 쓰면
+        몇 시간 전 값을 현재로 착각한다. 그런 토픽에만 켠다.
+        """
+        self._handlers[topic] = (handler, skip_retained)
 
     def start(self) -> None:
         with self._lock:
@@ -42,6 +57,7 @@ class MqttClient:
                 self._client.connect_timeout = 3
                 self._client.on_connect = self._on_connect
                 self._client.on_disconnect = self._on_disconnect
+                self._client.on_message = self._on_message
                 if self.username:
                     self._client.username_pw_set(self.username, self.password or None)
                 if self.use_tls:
@@ -149,16 +165,39 @@ class MqttClient:
             return
 
         raw_topics = runtime_env("MQTT_SUBSCRIBE_TOPICS", "").strip()
-        if not raw_topics:
+        env_topics = [item.strip() for item in raw_topics.split(",") if item.strip()]
+        # 핸들러가 등록된 토픽은 .env 설정 없이도 구독한다.
+        topics = dict.fromkeys(list(self._handlers) + env_topics)
+        if not topics:
             return
 
-        for topic in [item.strip() for item in raw_topics.split(",") if item.strip()]:
+        for topic in topics:
             result = self._client.subscribe(topic)
             rc = result[0] if isinstance(result, tuple) else getattr(result, "rc", 0)
             if rc == 0:
                 print(f"[mqtt] subscribed: {topic}")
             else:
                 print(f"[mqtt] subscribe failed rc={rc}: {topic}")
+
+    def _on_message(self, _client, _userdata, message) -> None:
+        entry = self._handlers.get(message.topic)
+        if not entry:
+            return
+
+        handler, skip_retained = entry
+        if skip_retained and message.retain:
+            return
+
+        try:
+            payload = json.loads(message.payload.decode("utf-8"))
+        except Exception as error:
+            print(f"[mqtt] payload parse failed {message.topic}: {error}")
+            return
+
+        try:
+            handler(payload)
+        except Exception as error:
+            print(f"[mqtt] handler failed {message.topic}: {error}")
 
     def _on_connect(self, _client, _userdata, _flags, reason_code, _properties=None) -> None:
         if self._is_success(reason_code):

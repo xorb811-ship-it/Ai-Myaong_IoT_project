@@ -18,10 +18,10 @@ export const onboardingSteps = [
     content: '이름·나이·건강 상태를 보여줘요. 탭하면 상세 정보로 이동해요.',
   },
   {
-    target: 'dash-cam',
+    target: 'dash-health',
     route: '/',
-    title: '실시간 캠',
-    content: '지금 우리 아이 모습을 바로 확인! 탭하면 로봇 비전으로 이동해요.',
+    title: 'AI 건강 분석',
+    content: '우리 아이 데이터로 건강 상태를 분석해드려요. 탭하면 건강 리포트로 이동해요.',
   },
   {
     target: 'dash-shortcuts',

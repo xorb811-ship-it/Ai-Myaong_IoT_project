@@ -14,11 +14,16 @@ export function useOnboarding(steps = onboardingSteps) {
   const [index, setIndex] = useState(0)
   const [finishing, setFinishing] = useState(false)
 
-  // 최초 1회만 노출
+  // 최초 1회만 노출 (완료 여부는 서버 DB 기준 · 비동기 조회)
   useEffect(() => {
-    if (!hasCompletedOnboarding()) {
+    let cancelled = false
+    hasCompletedOnboarding().then((done) => {
+      if (cancelled || done) return
       setIndex(0)
       setActive(true)
+    })
+    return () => {
+      cancelled = true
     }
   }, [])
 

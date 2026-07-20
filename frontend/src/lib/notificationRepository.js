@@ -44,6 +44,30 @@ function alertAllowed(type) {
 
 /* 인메모리 캐시 (DB 미러) */
 let cache = []
+let hydratedOnce = false
+
+export async function requestPushPermission() {
+  if (!('Notification' in window)) return 'unsupported'
+  if (Notification.permission === 'granted') return 'granted'
+  if (Notification.permission === 'denied') return 'denied'
+  return Notification.requestPermission()
+}
+
+function showPushNotification(notification) {
+  if (!notification || !alertAllowed(notification.type)) return
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
+
+  const push = new Notification(notification.title || 'Ai Myaong 알림', {
+    body: notification.desc || '',
+    icon: '/favicon.ico',
+    tag: notification.serverId ? `aimyaong-alert-${notification.serverId}` : undefined,
+  })
+  push.onclick = () => {
+    window.focus()
+    if (notification.link) window.location.assign(notification.link)
+    push.close()
+  }
+}
 
 function setCache(list) {
   cache = list
@@ -119,7 +143,15 @@ export async function hydrateNotifications() {
   try {
     const rows = await api.getAlerts()
     const hidden = readHiddenIds()
-    setCache((rows || []).filter((row) => !hidden.has(String(row.alert_id))).map(fromAlert))
+    const next = (rows || []).filter((row) => !hidden.has(String(row.alert_id))).map(fromAlert)
+    if (hydratedOnce) {
+      const previousIds = new Set(cache.map((item) => String(item.serverId)))
+      next
+        .filter((item) => item.type === 'water_skipped' && !previousIds.has(String(item.serverId)))
+        .forEach(showPushNotification)
+    }
+    hydratedOnce = true
+    setCache(next)
   } catch {
     /* 백엔드 미연결 → 빈 목록 유지 */
   }

@@ -18,14 +18,41 @@ from database.water_logs import WaterLog
 router = APIRouter(prefix="/api/dispenser", tags=["dispenser"])
 
 
+def _claim_dispenser_owner(request: Request, authorization: Optional[str]) -> None:
+    """명령을 보낸 사용자의 펫을 이 디스펜서의 주인으로 기억해둔다.
+
+    ESP32 는 실측 배출량만 알려줄 뿐 '누구 것'인지 모른다. 기기↔사용자 매핑 테이블이
+    없어서, 실제로 이 기기에 명령을 보낸 사람이 가장 확실한 단서다.
+    인증은 선택 — 토큰이 없거나(스케줄러 등) DB가 없어도 배식 자체는 되어야 한다.
+    """
+    logger = getattr(request.app.state, "dispenser_logger", None)
+    if logger is None or not authorization:
+        return
+    try:
+        from database.base import SessionLocal
+
+        if SessionLocal is None:
+            return
+        db = SessionLocal()
+        try:
+            user = _current_user(authorization, db)
+            logger.remember_owner(_resolve_pet_id(user, None, db))
+        finally:
+            db.close()
+    except Exception:
+        pass  # 주인 판별 실패가 배식을 막아서는 안 된다
+
+
 @router.post("/feed", response_model=CommandResponse)
-def feed(payload: FeedRequest, request: Request):
+def feed(payload: FeedRequest, request: Request, authorization: str = Header(None)):
+    _claim_dispenser_owner(request, authorization)
     return request.app.state.feed_service.feed(payload.amount)
 
 
 @router.post("/water", response_model=CommandResponse)
-def water(payload: WaterRequest, request: Request):
-    return request.app.state.feed_service.water(payload.amount)
+def water(payload: WaterRequest, request: Request, authorization: str = Header(None)):
+    _claim_dispenser_owner(request, authorization)
+    return request.app.state.feed_service.water(payload.seconds)
 
 
 # ── 배식/급수 기록 (기존 FEED_LOGS / WATER_LOGS 테이블에 저장) ──
@@ -104,6 +131,10 @@ class PumpSpeedRequest(BaseModel):
     speed: int
 
 
+class PresenceConfigRequest(BaseModel):
+    enabled: bool
+
+
 def _publish_dispenser_command(request: Request, topic: str, payload: dict):
     request_id = str(uuid4())
     message = {"request_id": request_id, **payload}
@@ -180,9 +211,36 @@ def create_water_log(body: WaterLogCreate, authorization: str = Header(None), db
     }
 
 
+@router.post("/stop", response_model=CommandResponse)
+def stop_dispenser(request: Request):
+    """긴급 정지 — 사료 오거와 물 펌프를 즉시 끈다.
+
+    인증을 걸지 않는다. 사료가 쏟아지는 중에 토큰이 만료됐다는 이유로 못 멈추면 안 된다.
+    되돌릴 수 있는 동작이고(다시 배식하면 된다) 잘못 눌러도 피해가 없다.
+    중간에 멈춰도 ESP32 가 '실제로 나간 양'을 재서 알리므로 통계는 정확하게 남는다.
+    """
+    result = _publish_dispenser_command(request, "dispenser/stop", {})
+    request.app.state.simulator.update_dispenser_state("stopped")
+    request.app.state.mqtt_client.publish(
+        "dispenser/weight/request",
+        {"request_id": str(uuid4()), "source": "stop"},
+    )
+    return result
+
+
 @router.post("/pump/off", response_model=CommandResponse)
 def pump_off(request: Request):
-    return _publish_dispenser_command(request, "dispenser/pump/off", {})
+    result = _publish_dispenser_command(request, "dispenser/pump/off", {})
+    request.app.state.simulator.update_dispenser_state("water_stopped")
+    return result
+
+
+@router.post("/pump/on", response_model=CommandResponse)
+def pump_on(request: Request):
+    """Start the water pump continuously; it remains on until /pump/off."""
+    result = _publish_dispenser_command(request, "dispenser/pump/on", {})
+    request.app.state.simulator.update_dispenser_state("water_pump_on")
+    return result
 
 
 @router.post("/pump/speed", response_model=CommandResponse)
@@ -194,6 +252,31 @@ def pump_speed(payload: PumpSpeedRequest, request: Request):
 @router.post("/tare", response_model=CommandResponse)
 def tare_loadcells(request: Request):
     return _publish_dispenser_command(request, "dispenser/tare", {})
+
+
+@router.post("/tare/food", response_model=CommandResponse)
+def tare_food_loadcell(request: Request):
+    return _publish_dispenser_command(request, "dispenser/tare/food", {})
+
+
+@router.post("/tare/water", response_model=CommandResponse)
+def tare_water_loadcell(request: Request):
+    return _publish_dispenser_command(request, "dispenser/tare/water", {})
+
+
+@router.post("/presence", response_model=CommandResponse)
+def configure_presence_gate(payload: PresenceConfigRequest, request: Request):
+    request_id = str(uuid4())
+    message = {"request_id": request_id, "enabled": payload.enabled}
+    mqtt_client = request.app.state.mqtt_client
+    mqtt_client.publish("dispenser/presence/config", message, retain=True)
+    return {
+        "request_id": request_id,
+        "status": "accepted",
+        "topic": "dispenser/presence/config",
+        "payload": message,
+        "simulated": mqtt_client.simulation_mode,
+    }
 
 
 @router.post("/weight/request", response_model=CommandResponse)
@@ -215,7 +298,11 @@ def list_logs(days: int = 400, authorization: str = Header(None), db: Session = 
     )
     waters = (
         db.query(WaterLog)
-        .filter(WaterLog.user_id == user.user_id, WaterLog.created_at >= since)
+        .filter(
+            WaterLog.user_id == user.user_id,
+            WaterLog.created_at >= since,
+            WaterLog.water_type == "consumed",
+        )
         .order_by(WaterLog.created_at.asc())
         .all()
     )

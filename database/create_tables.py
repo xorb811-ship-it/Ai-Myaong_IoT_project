@@ -10,6 +10,7 @@ import database.feed_logs
 import database.pet_health_reports
 import database.pets
 import database.oauth2_providers
+import database.robot_devices
 import database.settings
 import database.user
 import database.user_credentials

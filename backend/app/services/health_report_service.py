@@ -227,6 +227,7 @@ def build_pet_health_summary(db: Session, user_id: int, pet_id: int, days: int =
             WaterLog.pet_id == pet_id,
             WaterLog.created_at >= start_dt,
             WaterLog.created_at < end_dt,
+            WaterLog.water_type == "consumed",
         )
         .all()
     )

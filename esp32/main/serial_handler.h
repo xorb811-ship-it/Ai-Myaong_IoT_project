@@ -2,6 +2,7 @@
 
 #include "loadcell_control.h"
 #include "motor_control.h"
+#include "presence_control.h"
 #include "servo_control.h"
 #include "water_pump_control.h"
 
@@ -10,7 +11,7 @@ void printHelp() {
   Serial.println("  FORWARD, BACKWARD, STOP");
   Serial.println("  LEFT is an alias for BACKWARD, RIGHT is an alias for FORWARD");
   Serial.println("  SPEED 0-255");
-  Serial.println("  WATER/PUMP_ON continuous, PUMP_OFF, PUMP_MS 1-10000 timed");
+  Serial.println("  WATER/PUMP_ON continuous, PUMP_OFF, PUMP_MS 1-90000 timed");
   Serial.println("  PUMP_SPEED 0-255");
   Serial.println("  LOAD, LOAD1, LOAD2, LOAD_RAW, LOAD1_RAW, LOAD2_RAW");
   Serial.println("  LOAD_COUNT, LOAD1_COUNT, LOAD2_COUNT");
@@ -19,6 +20,8 @@ void printHelp() {
   Serial.println("  PINOUT");
   Serial.println("  WIFI_SETUP opens the Wi-Fi/MQTT setup portal");
   Serial.println("  NET_STATUS prints Wi-Fi and MQTT status");
+  Serial.println("  PRESENCE_STATUS prints PIR sensor state");
+  Serial.println("  PRESENCE_WATER_TEST seconds waits for PIR, then runs the pump");
   Serial.println("  PING");
   Serial.println("  CAM_UP, CAM_DOWN, CAM_LEFT, CAM_RIGHT, CAM_CENTER, FEED");
 }
@@ -70,6 +73,18 @@ void executeSerialCommand(String command) {
   else if (command == "PING") Serial.println("ACK PONG");
   else if (command == "WIFI_SETUP") startWifiSetupPortal();
   else if (command == "NET_STATUS") printNetworkStatus();
+  else if (command == "PRESENCE_STATUS") printPresenceStatus();
+  else if (command.startsWith("PRESENCE_WATER_TEST ")) {
+    int seconds = command.substring(20).toInt();
+    if (seconds < 30 || seconds > 90) {
+      Serial.println("ERR PRESENCE_WATER_TEST_RANGE 30-90");
+    } else {
+      requestScheduledWater(seconds, "serial-test", "", "");
+      Serial.println(scheduledWaterPending
+          ? "ACK PRESENCE_WATER_TEST WAITING_FOR_DETECTION"
+          : "ACK PRESENCE_WATER_TEST STARTED");
+    }
+  }
   else if (command == "HELP") printHelp();
   else if (command == "CAM_UP") cameraUp();
   else if (command == "CAM_DOWN") cameraDown();

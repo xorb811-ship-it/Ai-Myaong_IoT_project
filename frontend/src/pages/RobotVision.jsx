@@ -139,6 +139,9 @@ const MOVE_COMMANDS = {
 
 const MOVE_HOLD_REPEAT_MS = 300;
 const CAMERA_HOLD_REPEAT_MS = 180;
+const ROBOT_SERIAL_KEY = "aimyaong:robotSerial";
+const ROBOT_DEVICE_CLAIM_ENABLED =
+  import.meta.env.VITE_ROBOT_DEVICE_CLAIM_ENABLED === "true";
 
 const CAMERA_COMMANDS = {
   up: "CAM_UP",
@@ -164,6 +167,15 @@ export function RobotVision() {
   const [selectedClip, setSelectedClip] = useState(null);
   const [showAllEvents, setShowAllEvents] = useState(false);
   const [controlBusy, setControlBusy] = useState(false);
+  const [robotSerial, setRobotSerial] = useState(() => {
+    if (ROBOT_DEVICE_CLAIM_ENABLED) return "";
+    try {
+      return localStorage.getItem(ROBOT_SERIAL_KEY) || "";
+    } catch {
+      return "";
+    }
+  });
+  const [robotNotice, setRobotNotice] = useState("");
   const [streamInfo, setStreamInfo] = useState({ url: "", mode: "loading" });
   const [streamError, setStreamError] = useState("");
   const [detections, setDetections] = useState(null);
@@ -180,6 +192,48 @@ export function RobotVision() {
   const [forceCssLandscape, setForceCssLandscape] = useState(false);
   const fsRef = useRef(null);
   const visibleEventLog = eventLog.slice(0, 5);
+  const hasRobotSerial = !!robotSerial.trim();
+
+  const blockRobotAction = () => {
+    if (hasRobotSerial) return false;
+    setRobotNotice("로봇을 사용하려면 설정에서 시리얼 번호를 먼저 등록해 주세요.");
+    return true;
+  };
+
+  useEffect(() => {
+    if (!ROBOT_DEVICE_CLAIM_ENABLED) return;
+    let alive = true;
+    const syncRobotAccess = () => {
+      api
+        .getMyRobotDevices()
+        .then((result) => {
+          if (!alive) return;
+          const nextSerial = result.devices?.[0]?.robot_serial || "";
+          setRobotSerial(nextSerial);
+          try {
+            if (nextSerial) localStorage.setItem(ROBOT_SERIAL_KEY, nextSerial);
+            else localStorage.removeItem(ROBOT_SERIAL_KEY);
+          } catch {
+            /* ignore */
+          }
+        })
+        .catch(() => {
+          if (!alive) return;
+          setRobotSerial("");
+          try {
+            localStorage.removeItem(ROBOT_SERIAL_KEY);
+          } catch {
+            /* ignore */
+          }
+        });
+    };
+    syncRobotAccess();
+    window.addEventListener("focus", syncRobotAccess);
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", syncRobotAccess);
+    };
+  }, []);
 
   useEffect(() => {
     api
@@ -190,6 +244,14 @@ export function RobotVision() {
 
   useEffect(() => {
     let mounted = true;
+    if (!hasRobotSerial) {
+      setStreamInfo({ url: "", mode: "locked" });
+      setStreamError("");
+      setCamStatus("off");
+      return () => {
+        mounted = false;
+      };
+    }
     api
       .getStreamUrl()
       .then((data) => {
@@ -206,11 +268,15 @@ export function RobotVision() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [hasRobotSerial]);
 
   useEffect(() => {
     let mounted = true;
     const load = () => {
+      if (!hasRobotSerial) {
+        setDetections(null);
+        return;
+      }
       api
         .getLatestDetections()
         .then((data) => {
@@ -227,7 +293,7 @@ export function RobotVision() {
       mounted = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [hasRobotSerial]);
 
   useEffect(() => {
     let mounted = true;
@@ -361,6 +427,7 @@ export function RobotVision() {
 
   const sendCommand = (kind, command) => {
     if (!command) return;
+    if (blockRobotAction()) return;
 
     pendingCommandCountRef.current += 1;
     controlBusyRef.current = true;
@@ -390,6 +457,7 @@ export function RobotVision() {
   const rearObstacle = !!detections?.rear_sensor?.rear_obstacle_immediate;
 
   const onMove = (dir) => {
+    if (blockRobotAction()) return;
     // 후진(아래)은 후방 장애물 시 차단하고 즉시 정지 명령을 보낸다.
     if (dir === "down" && rearObstacle) {
       sendCommand("move", "STOP");
@@ -399,22 +467,25 @@ export function RobotVision() {
   };
 
   const onMoveStop = () => {
+    if (!hasRobotSerial) return;
     sendCommand("move", "STOP");
   };
 
   // 위험이 발생하는 순간(false→true) 후진 중이면 자동으로 멈춘다.
   useEffect(() => {
-    if (rearObstacle) {
+    if (rearObstacle && hasRobotSerial) {
       sendCommand("move", "STOP");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rearObstacle]);
+  }, [rearObstacle, hasRobotSerial]);
 
   const onPan = (dir) => {
+    if (blockRobotAction()) return;
     sendCommand("camera", CAMERA_COMMANDS[dir]);
   };
 
   const toggleAwayMode = async () => {
+    if (blockRobotAction()) return;
     const next = !awayMode;
     const previous = awayMode;
     setAwayMode(next);
@@ -433,6 +504,7 @@ export function RobotVision() {
   };
 
   const toggleAbnormalDetection = async () => {
+    if (blockRobotAction()) return;
     const next = !abnormalDetection;
     const previous = abnormalDetection;
     setAbnormalDetection(next);
@@ -445,6 +517,7 @@ export function RobotVision() {
   };
 
   const captureSnapshot = async () => {
+    if (blockRobotAction()) return;
     try {
       await api.captureSnapshot();
       setCaptureNotice(true);
@@ -468,6 +541,7 @@ export function RobotVision() {
   };
 
   const toggleRecording = async () => {
+    if (blockRobotAction()) return;
     const next = !recording;
     const previous = recording;
     setRecording(next);
@@ -499,6 +573,27 @@ export function RobotVision() {
       </div>
 
       {/* 일반 모드 비디오 */}
+      {!hasRobotSerial && (
+        <div className="mb-3 rounded-3xl border border-dashed border-brand-primary/30 bg-brand-primary/10 px-4 py-3">
+          <div className="flex items-start gap-2.5">
+            <Lock className="mt-0.5 w-4 h-4 text-brand-primary shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-brand-brown">
+                시리얼 번호 등록이 필요합니다.
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-brand-mute">
+                로봇 이동, 카메라 제어, 외출 모드, 녹화와 캡처는 설정에서 로봇 시리얼 번호를 등록한 뒤 사용할 수 있습니다.
+              </p>
+              {robotNotice && (
+                <p className="mt-1 text-xs font-bold text-brand-primary">
+                  {robotNotice}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <Card className="overflow-hidden" data-tour="vision-stream">
         <div
           ref={fsRef}
@@ -529,18 +624,36 @@ export function RobotVision() {
             </div>
           ) : (
             <>
-              <StreamFrame
-                src={streamInfo.url}
-                mode={streamInfo.mode}
-                error={streamError}
-                className="absolute inset-0"
-                onStatusChange={setCamStatus}
-              />
-              <DetectionOverlay
-                detections={detections}
-                className="absolute inset-0"
-              />
-              <RearWarning sensor={detections?.rear_sensor} className="absolute inset-0 z-20" />
+              {hasRobotSerial ? (
+                <>
+                  <StreamFrame
+                    src={streamInfo.url}
+                    mode={streamInfo.mode}
+                    error={streamError}
+                    className="absolute inset-0"
+                    onStatusChange={setCamStatus}
+                  />
+                  <DetectionOverlay
+                    detections={detections}
+                    className="absolute inset-0"
+                  />
+                  <RearWarning sensor={detections?.rear_sensor} className="absolute inset-0 z-20" />
+                </>
+              ) : (
+                <div className="absolute inset-0 bg-gradient-to-br from-brand-cream via-brand-line to-brand-line flex items-center justify-center text-brand-mute">
+                  <div className="text-center px-6">
+                    <span className="w-16 h-16 mb-2.5 mx-auto rounded-full flex items-center justify-center bg-white/50 ring-1 ring-inset ring-white/60 shadow-sm">
+                      <Lock className="w-7 h-7 text-brand-primary" />
+                    </span>
+                    <p className="text-sm font-bold text-brand-brown">
+                      영상 스트리밍 잠김
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed">
+                      설정에서 로봇 시리얼 번호를 등록하면 실시간 영상을 볼 수 있습니다.
+                    </p>
+                  </div>
+                </div>
+              )}
               <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2">
                 <span
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-white text-[11px] font-bold ${camStatus === "live" ? "bg-black/55" : "bg-black/40"}`}
@@ -667,6 +780,7 @@ export function RobotVision() {
             <button
               type="button"
               onClick={toggleAwayMode}
+              disabled={!hasRobotSerial}
               className={`relative overflow-hidden flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] border border-dashed transition-colors ${
                 awayMode
                   ? "bg-brand-primary text-white border-white/30 active:bg-brand-primary/80"
@@ -684,6 +798,7 @@ export function RobotVision() {
               type="button"
               onClick={toggleAbnormalDetection}
               aria-pressed={abnormalDetection}
+              disabled={!hasRobotSerial}
               className={`relative overflow-hidden flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] border border-dashed transition-colors ${
                 abnormalDetection
                   ? "bg-brand-primary text-white border-white/30 active:bg-brand-primary/80"
@@ -700,6 +815,7 @@ export function RobotVision() {
             <button
               type="button"
               onClick={toggleRecording}
+              disabled={!hasRobotSerial}
               className={`relative overflow-hidden flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] border border-dashed transition-colors ${
                 recording
                   ? "bg-brand-primary text-white border-white/30 active:bg-brand-primary/80"
@@ -716,6 +832,7 @@ export function RobotVision() {
             <button
               type="button"
               onClick={captureSnapshot}
+              disabled={!hasRobotSerial}
               className={`relative overflow-hidden flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] border border-dashed transition-colors ${
                 captureFlash
                   ? "bg-brand-primary text-white border-white/30"

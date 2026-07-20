@@ -36,10 +36,13 @@ CLIP_DIR.mkdir(exist_ok=True)
 EMERGENCY_CLIP_DIR.mkdir(exist_ok=True)
 
 DEFAULT_CLASS_LABELS = {
+    
+    
     0: "Person",
     15: "Cat",
     16: "Dog",
 }
+
 
 DB_API_TIMEOUT = max(0.5, float(os.getenv("VISION_DB_API_TIMEOUT", "3")))
 

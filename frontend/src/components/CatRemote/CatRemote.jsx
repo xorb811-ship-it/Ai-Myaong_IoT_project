@@ -432,10 +432,10 @@ export function CatRemote() {
         <>
       <div className={`ctrl-buttons ${remoteOpen && !playing ? 'open' : ''}`}>
         <button type="button" className="ctrl-btn" onClick={moveToTop}>
-          Top
+          맨 위
         </button>
         <button type="button" className="ctrl-btn" onClick={moveToBottom}>
-          Bottom
+          맨 아래
         </button>
         {easterEggOpen && (
           <>
@@ -448,7 +448,7 @@ export function CatRemote() {
           </>
         )}
         <button type="button" className="ctrl-btn" onClick={hideCat}>
-          Hide
+          숨기기
         </button>
       </div>
 

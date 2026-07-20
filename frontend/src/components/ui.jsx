@@ -72,17 +72,19 @@ export function GhostButton({ className = '', children, ...rest }) {
   )
 }
 
-export function ToggleSwitch({ checked, onChange, label }) {
+export function ToggleSwitch({ checked, onChange, label, disabled = false }) {
   return (
     <button
       role="switch"
       aria-checked={checked}
       aria-label={label}
       onClick={() => onChange?.(!checked)}
+      disabled={disabled}
       className={`
         relative inline-flex h-7 w-12 items-center rounded-full
         transition-colors touch-active
         ${checked ? 'bg-brand-primary' : 'bg-brand-line'}
+        ${disabled ? 'cursor-not-allowed opacity-55' : ''}
       `}
     >
       <span

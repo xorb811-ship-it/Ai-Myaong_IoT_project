@@ -1,0 +1,70 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="720" rx="34" fill="#FFF7EF"/>
+  <text x="72" y="82" fill="#3B2D25" font-family="Pretendard, Arial, sans-serif" font-size="34" font-weight="800">Ai-Myaong DB 구조도</text>
+  <text x="72" y="120" fill="#8A6E5D" font-family="Pretendard, Arial, sans-serif" font-size="18">사용자별 반려묘 데이터를 중심으로 급식, 급수, 활동량, 알림, 건강 리포트를 연결</text>
+
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2 2L10 6L2 10" fill="none" stroke="#C98556" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#8A5A3C" flood-opacity="0.13"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#softShadow)">
+    <rect x="445" y="166" width="310" height="96" rx="22" fill="#5A3928"/>
+    <text x="600" y="208" text-anchor="middle" fill="#FFF7EF" font-family="Pretendard, Arial, sans-serif" font-size="24" font-weight="800">USER</text>
+    <text x="600" y="236" text-anchor="middle" fill="#F8DCC8" font-family="Pretendard, Arial, sans-serif" font-size="15">사용자 계정 / 프로필</text>
+  </g>
+
+  <path d="M600 262V325" stroke="#C98556" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <g filter="url(#softShadow)">
+    <rect x="445" y="332" width="310" height="96" rx="22" fill="#FF9A8D"/>
+    <text x="600" y="374" text-anchor="middle" fill="#3B2D25" font-family="Pretendard, Arial, sans-serif" font-size="24" font-weight="800">PETS</text>
+    <text x="600" y="402" text-anchor="middle" fill="#5A3928" font-family="Pretendard, Arial, sans-serif" font-size="15">반려묘 기본 정보</text>
+  </g>
+
+  <path d="M445 382H306" stroke="#C98556" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M755 382H894" stroke="#C98556" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M520 428L344 512" stroke="#C98556" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M600 428V507" stroke="#C98556" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M680 428L856 512" stroke="#C98556" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <g filter="url(#softShadow)">
+    <rect x="74" y="330" width="232" height="104" rx="20" fill="#FFFDF9" stroke="#F2B07C" stroke-width="2"/>
+    <text x="190" y="371" text-anchor="middle" fill="#3B2D25" font-family="Pretendard, Arial, sans-serif" font-size="21" font-weight="800">USER_CREDENTIALS</text>
+    <text x="190" y="399" text-anchor="middle" fill="#8A6E5D" font-family="Pretendard, Arial, sans-serif" font-size="14">아이디 / 비밀번호 해시</text>
+  </g>
+
+  <g filter="url(#softShadow)">
+    <rect x="894" y="330" width="232" height="104" rx="20" fill="#FFFDF9" stroke="#F2B07C" stroke-width="2"/>
+    <text x="1010" y="371" text-anchor="middle" fill="#3B2D25" font-family="Pretendard, Arial, sans-serif" font-size="21" font-weight="800">SETTINGS</text>
+    <text x="1010" y="399" text-anchor="middle" fill="#8A6E5D" font-family="Pretendard, Arial, sans-serif" font-size="14">사용자별 앱 설정</text>
+  </g>
+
+  <g filter="url(#softShadow)">
+    <rect x="94" y="514" width="240" height="116" rx="20" fill="#FFFDF9" stroke="#F2B07C" stroke-width="2"/>
+    <text x="214" y="553" text-anchor="middle" fill="#3B2D25" font-family="Pretendard, Arial, sans-serif" font-size="21" font-weight="800">FEED / WATER</text>
+    <text x="214" y="581" text-anchor="middle" fill="#8A6E5D" font-family="Pretendard, Arial, sans-serif" font-size="14">급식·급수 로그</text>
+    <text x="214" y="605" text-anchor="middle" fill="#8A6E5D" font-family="Pretendard, Arial, sans-serif" font-size="14">시간 / 양 / 방식 저장</text>
+  </g>
+
+  <g filter="url(#softShadow)">
+    <rect x="480" y="514" width="240" height="116" rx="20" fill="#FFFDF9" stroke="#F2B07C" stroke-width="2"/>
+    <text x="600" y="553" text-anchor="middle" fill="#3B2D25" font-family="Pretendard, Arial, sans-serif" font-size="21" font-weight="800">ACTIVITY</text>
+    <text x="600" y="581" text-anchor="middle" fill="#8A6E5D" font-family="Pretendard, Arial, sans-serif" font-size="14">시간대별 활동량 요약</text>
+    <text x="600" y="605" text-anchor="middle" fill="#8A6E5D" font-family="Pretendard, Arial, sans-serif" font-size="14">일 / 주 / 월 통계 활용</text>
+  </g>
+
+  <g filter="url(#softShadow)">
+    <rect x="866" y="514" width="240" height="116" rx="20" fill="#FFFDF9" stroke="#F2B07C" stroke-width="2"/>
+    <text x="986" y="553" text-anchor="middle" fill="#3B2D25" font-family="Pretendard, Arial, sans-serif" font-size="21" font-weight="800">ALERT / REPORT</text>
+    <text x="986" y="581" text-anchor="middle" fill="#8A6E5D" font-family="Pretendard, Arial, sans-serif" font-size="14">알림 / 이벤트</text>
+    <text x="986" y="605" text-anchor="middle" fill="#8A6E5D" font-family="Pretendard, Arial, sans-serif" font-size="14">건강 리포트 저장</text>
+  </g>
+
+  <rect x="72" y="666" width="1056" height="1" fill="#EAD8C7"/>
+  <text x="72" y="694" fill="#8A6E5D" font-family="Pretendard, Arial, sans-serif" font-size="15">핵심 흐름: USER 한 명이 여러 PETS를 가질 수 있고, 각 반려묘에 케어 로그와 분석 데이터가 연결됩니다.</text>
+</svg>

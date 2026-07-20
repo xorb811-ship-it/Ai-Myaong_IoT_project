@@ -1,14 +1,17 @@
 import json
+import os
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.core.device_hmac import verify_signed_message
 from app.models.command import (
     AwayModeRequest,
     CameraRequest,
     CommandResponse,
     MoveRequest,
+    PowerRequest,
     RobotStatus,
     SensorUpdateRequest,
 )
@@ -68,20 +71,38 @@ def capture_snapshot(request: Request):
         raise HTTPException(status_code=503, detail=str(error)) from error
 
 
+@router.post("/reboot", response_model=CommandResponse)
+def reboot_robot(request: Request):
+    try:
+        return request.app.state.robot_service.reboot()
+    except LocalSerialError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@router.post("/power", response_model=CommandResponse)
+def power_robot(payload: PowerRequest, request: Request):
+    try:
+        return request.app.state.robot_service.power(payload.on)
+    except LocalSerialError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
 @router.get("/status", response_model=RobotStatus)
 def robot_status(request: Request):
     return request.app.state.robot_service.status()
 
 
 @router.post("/sensor")
-def update_sensor(payload: SensorUpdateRequest, request: Request, db: Session = Depends(get_db)):
+def update_sensor(payload: dict, request: Request, db: Session = Depends(get_db)):
+    payload = _verified_or_legacy_sensor_payload(payload)
+    sensor_payload = SensorUpdateRequest.model_validate(payload)
     status = request.app.state.simulator.update_sensor(
-        distance_cm=payload.distance_cm,
-        rear_obstacle=payload.rear_obstacle,
-        threshold_cm=payload.threshold_cm,
-        source=payload.source,
+        distance_cm=sensor_payload.distance_cm,
+        rear_obstacle=sensor_payload.rear_obstacle,
+        threshold_cm=sensor_payload.threshold_cm,
+        source=sensor_payload.source,
     )
-    alert_created = _create_rear_obstacle_alert_if_needed(payload, db)
+    alert_created = _create_rear_obstacle_alert_if_needed(sensor_payload, db)
     return {"ok": True, "alert_created": alert_created, "sensor": status.get("sensor", {})}
 
 
@@ -128,3 +149,41 @@ def _create_rear_obstacle_alert_if_needed(payload: SensorUpdateRequest, db: Sess
     _last_rear_obstacle_alert_at = now
     print(f"[robot:sensor] rear obstacle alert created: {payload.distance_cm}cm")
     return True
+
+
+def _verified_or_legacy_sensor_payload(message: dict) -> dict:
+    if "signature" not in message:
+        return message
+
+    robot_serial = (
+        os.getenv("ROBOT_SERIAL")
+        or os.getenv("DEVICE_SERIAL")
+        or os.getenv("DEVICE_ID")
+        or ""
+    ).strip().upper()
+    device_secret = (
+        os.getenv("ROBOT_DEVICE_SECRET")
+        or os.getenv("DEVICE_SECRET")
+        or ""
+    ).strip()
+    hmac_required = os.getenv("ROBOT_HMAC_REQUIRED", "false").lower() == "true"
+    max_age = int(os.getenv("ROBOT_HMAC_MAX_AGE_SECONDS", "300"))
+
+    payload = message.get("payload")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=401, detail="Invalid device signature payload.")
+
+    if not device_secret:
+        if hmac_required:
+            raise HTTPException(status_code=401, detail="Device signature is required.")
+        return payload
+
+    if verify_signed_message(
+        message,
+        device_secret,
+        expected_robot_serial=robot_serial or None,
+        max_age_seconds=max_age,
+    ):
+        return payload
+
+    raise HTTPException(status_code=401, detail="Invalid device signature.")

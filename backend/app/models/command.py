@@ -26,12 +26,18 @@ class AwayModeRequest(BaseModel):
     on: bool
 
 
+class PowerRequest(BaseModel):
+    on: bool
+
+
 class FeedRequest(BaseModel):
     amount: int = Field(default=1, ge=1, le=300)
 
 
 class WaterRequest(BaseModel):
-    amount: int = Field(default=1, ge=1, le=300)
+    # 물통이 저수조 겸 음수대라 펌프를 돌려도 물이 통 밖으로 나가지 않는다(순환).
+    # 그래서 물은 'ml' 로 지시할 수 없고 '펌프를 몇 초 돌릴지'로만 지시한다.
+    seconds: int = Field(default=60, ge=30, le=90)
 
 
 class SharedWifiRequest(BaseModel):
@@ -56,6 +62,6 @@ class RobotStatus(BaseModel):
     last_command: str | None = None
     position: dict[str, int]
     camera: dict[str, int]
-    dispenser: dict[str, int | bool]
+    dispenser: dict[str, Any]
     sensor: dict[str, Any]
     updated_at: str

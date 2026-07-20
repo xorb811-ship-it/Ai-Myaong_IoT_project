@@ -59,7 +59,34 @@ def network_status(request: Request):
 
 @router.get("/pi-wifi-scan")
 def pi_wifi_scan():
-    return _pi_agent_json_request("/api/wifi/scan")
+    result = _pi_agent_json_request("/api/wifi/scan")
+    networks = result.get("networks", []) if isinstance(result, dict) else []
+    result["networks"] = [
+        network
+        for network in networks
+        if network.get("compatible", network.get("esp32Compatible", False))
+    ]
+    result["filter"] = "esp32-2.4ghz"
+    return result
+
+
+@router.post("/esp32/setup-mode")
+def start_esp32_setup_mode(request: Request):
+    mqtt_client = getattr(request.app.state, "mqtt_client", None)
+    if mqtt_client is None or not mqtt_client.connected:
+        raise HTTPException(status_code=503, detail="MQTT is not connected.")
+
+    published = mqtt_client.publish(
+        "dispenser/wifi/setup",
+        {"command": "start", "source": "frontend"},
+    )
+    if not published:
+        raise HTTPException(status_code=502, detail="Failed to request ESP32 setup mode.")
+    return {
+        "ok": True,
+        "ssid": "AiMyaong-Setup",
+        "setupUrl": "http://192.168.4.1",
+    }
 
 
 @router.post("/pi-wifi-connect")
@@ -186,7 +213,7 @@ def _sync_backend_env_from_pi_ip(pi_ip: str) -> None:
         return
 
     pi_agent_port = runtime_env("PI_AGENT_HTTP_PORT", "8765").strip() or "8765"
-    stream_port = runtime_env("STREAM_PORT", "1").strip() or "8081"
+    stream_port = runtime_env("STREAM_PORT", "8081").strip() or "8081"
     _set_env_value(BACKEND_ENV, "PI_AGENT_BASE_URL", f"http://{pi_ip}:{pi_agent_port}")
     _set_env_value(BACKEND_ENV, "CAMERA_STREAM_URL", f"http://{pi_ip}:{stream_port}/stream.mjpg")
     _set_env_value(DESKTOP_ENV, "MJPEG_STREAM_URL", f"http://{pi_ip}:{stream_port}/stream.mjpg")

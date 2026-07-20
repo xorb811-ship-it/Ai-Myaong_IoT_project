@@ -23,14 +23,15 @@ import {
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useTheme } from "../theme/ThemeProvider";
 import { api } from "../api/api";
+import { requestPushPermission } from "../lib/notificationRepository";
 
 const ESP32_SETUP_URL_KEY = "aimyaong:esp32SetupUrl";
-const ESP32_MQTT_HOST_KEY = "aimyaong:esp32MqttHost";
 const ROBOT_SERIAL_KEY = "aimyaong:robotSerial";
+const PRESENCE_GATE_KEY = "aimyaong:presenceGateEnabled";
+const ROBOT_DEVICE_CLAIM_ENABLED =
+  import.meta.env.VITE_ROBOT_DEVICE_CLAIM_ENABLED === "true";
 const DEFAULT_ESP32_SETUP_URL =
   import.meta.env.VITE_ESP32_SETUP_URL || "http://192.168.4.1";
-const DEFAULT_ESP32_MQTT_HOST =
-  import.meta.env.VITE_ESP32_MQTT_HOST || "10.1.82.103";
 
 // 카드 배경: 흰색 80% + 크림 20% (대시보드·마이페이지와 동일) / 정보·칩: 따뜻한 탄
 const BG_CARD = "color-mix(in srgb, rgb(var(--brand-card)) 80%, rgb(var(--brand-cream)) 20%)";
@@ -95,9 +96,6 @@ export function Settings() {
   const [setupUrl, setSetupUrl] = useState(() =>
     readLocal(ESP32_SETUP_URL_KEY, DEFAULT_ESP32_SETUP_URL),
   );
-  const [mqttHost, setMqttHost] = useState(() =>
-    readLocal(ESP32_MQTT_HOST_KEY, DEFAULT_ESP32_MQTT_HOST),
-  );
   const [wifiStatus, setWifiStatus] = useState(null);
   const [networks, setNetworks] = useState([]);
   const [selectedNetwork, setSelectedNetwork] = useState(null);
@@ -110,11 +108,16 @@ export function Settings() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [sheetNetwork, setSheetNetwork] = useState(null); // 연결하려는 네트워크
   const [showAppInfo, setShowAppInfo] = useState(false); // 앱 정보(빌드 현황) 시트
+  const [tareBusy, setTareBusy] = useState("");
+  const [tareMessage, setTareMessage] = useState("");
+  const [presenceGateEnabled, setPresenceGateEnabled] = useState(
+    () => readLocal(PRESENCE_GATE_KEY, "false") === "true",
+  );
+  const [presenceBusy, setPresenceBusy] = useState(false);
 
   useEffect(() => writeLocal(ESP32_SETUP_URL_KEY, setupUrl), [setupUrl]);
-  useEffect(() => writeLocal(ESP32_MQTT_HOST_KEY, mqttHost), [mqttHost]);
 
-  // ESP32 주소 / MQTT 호스트 변경 시 디바운스 후 DB 저장 (초기/로드값은 건너뜀)
+  // ESP32 설정 주소 변경 시 디바운스 후 DB 저장 (초기/로드값은 건너뜀)
   const esp32Ready = useRef(false);
   useEffect(() => {
     if (!esp32Ready.current) {
@@ -122,16 +125,41 @@ export function Settings() {
       return;
     }
     const t = setTimeout(() => {
-      saveSettings({ esp32_setup_url: setupUrl, mqtt_host: mqttHost });
+      saveSettings({ esp32_setup_url: setupUrl });
     }, 600);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setupUrl, mqttHost]);
+  }, [setupUrl]);
 
   // 로봇 시리얼 번호 (기기 등록)
-  const [serial, setSerial] = useState(() => readLocal(ROBOT_SERIAL_KEY, ""));
+  const [serial, setSerial] = useState(() =>
+    ROBOT_DEVICE_CLAIM_ENABLED ? "" : readLocal(ROBOT_SERIAL_KEY, ""),
+  );
   const [serialInput, setSerialInput] = useState("");
-  useEffect(() => writeLocal(ROBOT_SERIAL_KEY, serial), [serial]);
+  const [serialBusy, setSerialBusy] = useState(false);
+  const [serialMessage, setSerialMessage] = useState("");
+  const [memberEmail, setMemberEmail] = useState("");
+  const [memberBusy, setMemberBusy] = useState(false);
+  const [memberMessage, setMemberMessage] = useState("");
+  const [robotRole, setRobotRole] = useState("");
+  const [serialPanelOpen, setSerialPanelOpen] = useState(false);
+  const [memberPanelOpen, setMemberPanelOpen] = useState(false);
+  const [robotActionBusy, setRobotActionBusy] = useState("");
+  const [robotActionMessage, setRobotActionMessage] = useState("");
+  useEffect(() => {
+    if (!ROBOT_DEVICE_CLAIM_ENABLED) {
+      writeLocal(ROBOT_SERIAL_KEY, serial);
+      return;
+    }
+    if (serial) writeLocal(ROBOT_SERIAL_KEY, serial);
+    else {
+      try {
+        localStorage.removeItem(ROBOT_SERIAL_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [serial]);
 
   // settings 일부 필드 DB 저장 (실패해도 로컬은 유지)
   const saveSettings = (patch) => {
@@ -146,6 +174,12 @@ export function Settings() {
     } catch {
       setMotionAlert(previous);
     }
+  };
+
+  const updatePushEnabled = async (value) => {
+    if (value) await requestPushPermission();
+    setPushOn(value);
+    saveSettings({ push_enabled: value ? "Y" : "N" });
   };
 
   // 알림 제어 상태를 localStorage 에 미러 → notificationRepository 가 발송 전 확인 (꺼진 알림 차단)
@@ -169,19 +203,37 @@ export function Settings() {
   useEffect(() => {
     api
       .getSettings()
-      .then((s) => {
+      .then(async (s) => {
         setPushOn(s.push_enabled !== "N");
         setMotionAlert(s.motion_alert !== "N");
         setStrangerAlert(s.stranger_alert !== "N");
         setFeedAlert(s.feed_alert === "Y");
         if (s.dark_mode) setTheme(s.dark_mode); // DB 테마 → 화면 반영
-        if (s.robot_serial) setSerial(s.robot_serial);
+        if (ROBOT_DEVICE_CLAIM_ENABLED) {
+          try {
+            const result = await api.getMyRobotDevices();
+            const authorizedDevice = result.devices?.[0] || null;
+            const authorizedSerial = authorizedDevice?.robot_serial || "";
+            setSerial(authorizedSerial);
+            setRobotRole(authorizedDevice?.role || "");
+            if (authorizedSerial && s.robot_serial !== authorizedSerial) {
+              saveSettings({ robot_serial: authorizedSerial });
+            }
+            if (!authorizedSerial && s.robot_serial) {
+              saveSettings({ robot_serial: "" });
+            }
+          } catch {
+            setSerial("");
+            setRobotRole("");
+          }
+        } else if (s.robot_serial) {
+          setSerial(s.robot_serial);
+          setRobotRole("OWNER");
+        }
         // esp32/mqtt: DB에 있으면 반영, 없으면(null) 현재 기본값을 DB에 자동 저장
         const patch = {};
         if (s.esp32_setup_url) setSetupUrl(s.esp32_setup_url);
         else patch.esp32_setup_url = setupUrl;
-        if (s.mqtt_host) setMqttHost(s.mqtt_host);
-        else patch.mqtt_host = mqttHost;
         if (Object.keys(patch).length) saveSettings(patch);
       })
       .catch(() => {});
@@ -199,16 +251,95 @@ export function Settings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme]);
 
-  const registerSerial = () => {
+  const registerSerial = async () => {
     const v = serialInput.trim().toUpperCase();
     if (!v) return;
-    setSerial(v);
-    setSerialInput("");
-    saveSettings({ robot_serial: v }); // DB 저장
+    setSerialBusy(true);
+    setSerialMessage("");
+    try {
+      if (ROBOT_DEVICE_CLAIM_ENABLED) {
+        const claimed = await api.claimRobotDevice(v);
+        setRobotRole(claimed.role || "OWNER");
+        setSerialMessage("로봇 등록이 완료되었습니다.");
+      } else {
+        setSerialMessage("시리얼 번호가 임시 저장되었습니다. DB 반영 후 기기 인증으로 전환됩니다.");
+      }
+      setSerial(v);
+      setSerialInput("");
+      if (!ROBOT_DEVICE_CLAIM_ENABLED) {
+        saveSettings({ robot_serial: v });
+      }
+    } catch (error) {
+      setSerialMessage(error.message || "로봇 등록에 실패했습니다.");
+    } finally {
+      setSerialBusy(false);
+    }
   };
-  const unregisterSerial = () => {
-    setSerial("");
-    saveSettings({ robot_serial: "" });
+  const unregisterSerial = async () => {
+    if (!serial) return;
+    setSerialBusy(true);
+    setSerialMessage("");
+    try {
+      if (ROBOT_DEVICE_CLAIM_ENABLED) {
+        await api.releaseRobotDevice(serial);
+      } else {
+        saveSettings({ robot_serial: "" });
+      }
+      setSerial("");
+      setRobotRole("");
+      setMemberEmail("");
+      setMemberMessage("");
+      setSerialMessage("시리얼 번호 연결을 해제했습니다.");
+    } catch (error) {
+      setSerialMessage(error.message || "시리얼 번호 해제에 실패했습니다.");
+    } finally {
+      setSerialBusy(false);
+    }
+  };
+
+  const grantMemberAccess = async () => {
+    const email = memberEmail.trim().toLowerCase();
+    if (!serial || !email) return;
+    setMemberBusy(true);
+    setMemberMessage("");
+    try {
+      if (ROBOT_DEVICE_CLAIM_ENABLED) {
+        await api.grantRobotDeviceMember({
+          robotSerial: serial,
+          userEmail: email,
+        });
+        setMemberMessage(`${email} 사용자에게 로봇 사용 권한을 부여했습니다.`);
+      } else {
+        setMemberMessage("DB 반영 후 사용자 권한 부여 기능을 사용할 수 있습니다.");
+      }
+      setMemberEmail("");
+    } catch (error) {
+      setMemberMessage(error.message || "권한 부여에 실패했습니다.");
+    } finally {
+      setMemberBusy(false);
+    }
+  };
+
+  const runRobotSystemAction = async (action) => {
+    if (!serial || robotActionBusy) return;
+    setRobotActionBusy(action);
+    setRobotActionMessage("");
+    try {
+      if (action === "reboot") {
+        await api.rebootRobot();
+        setRobotActionMessage("로봇 재부팅 명령을 보냈습니다.");
+      } else if (action === "powerOff") {
+        await api.setRobotPower(false);
+        setRobotActionMessage("로봇 전원 OFF 명령을 보냈습니다.");
+      } else if (action === "powerOn") {
+        await api.setRobotPower(true);
+        setRobotActionMessage("로봇 전원 ON 명령을 보냈습니다.");
+      }
+    } catch (error) {
+      setRobotActionMessage(error.message || "로봇 명령 전송에 실패했습니다.");
+    } finally {
+      setRobotActionBusy("");
+    }
   };
 
   const selectedIsCompatible =
@@ -242,7 +373,6 @@ export function Settings() {
       if (!silent) setNetworkMessage("");
       const data = await esp32Request("/api/wifi/status");
       setWifiStatus(data);
-      if (data.mqttHost) setMqttHost(data.mqttHost);
     } catch {
       setWifiStatus(null);
       if (!silent) setNetworkMessage("ESP32 설정 주소에 연결할 수 없습니다.");
@@ -298,7 +428,6 @@ export function Settings() {
         body: JSON.stringify({
           ssid: selectedSsid,
           password: wifiPassword,
-          mqttHost,
           reboot: false,
         }),
       });
@@ -323,8 +452,6 @@ export function Settings() {
     try {
       const data = await api.getNetworkStatus();
       setPiNetworkStatus(data);
-      const host = data.raspberrypiEnv?.MQTT_BROKER_HOST;
-      if (host) setMqttHost(host);
     } catch {
       setPiNetworkStatus(null);
     }
@@ -350,23 +477,16 @@ export function Settings() {
         data = await api.configurePiWifi({
           ssid: selectedSsid,
           password: wifiPassword,
-          mqttHost: mqttHost.trim() || "auto",
-          mqttPort: 1883,
-          esp32SetupUrl: setupUrl,
           piApFallback,
         });
       } catch {
         data = await api.configureSharedWifi({
           ssid: selectedSsid,
           password: wifiPassword,
-          mqttHost: mqttHost.trim() || "auto",
-          mqttPort: 1883,
-          esp32SetupUrl: setupUrl,
           piApFallback,
         });
       }
       const nextHost = data.raspberrypiEnv?.MQTT_BROKER_HOST;
-      if (nextHost) setMqttHost(nextHost);
       setNetworkMessage(
         nextHost ? `적용 완료. MQTT ${nextHost}:1883` : "적용 완료.",
       );
@@ -376,6 +496,37 @@ export function Settings() {
       setNetworkMessage(error.message || "공통 Wi-Fi 설정에 실패했습니다.");
     } finally {
       setNetworkBusy(false);
+    }
+  }
+
+  async function tareDispenser(target) {
+    setTareBusy(target);
+    setTareMessage("");
+    try {
+      if (target === "food") await api.dispenserTareFood();
+      else if (target === "water") await api.dispenserTareWater();
+      else await api.dispenserTare();
+      window.setTimeout(() => api.requestDispenserWeight().catch(() => {}), 700);
+      const label = target === "food" ? "사료" : target === "water" ? "물" : "전체";
+      setTareMessage(`${label} 영점 조정 명령을 전송했습니다. 영점은 ESP32에 저장됩니다.`);
+    } catch (error) {
+      setTareMessage(error.message || "영점 조정 명령 전송에 실패했습니다.");
+    } finally {
+      setTareBusy("");
+    }
+  }
+
+  async function updatePresenceGate(enabled) {
+    const previous = presenceGateEnabled;
+    setPresenceGateEnabled(enabled);
+    setPresenceBusy(true);
+    try {
+      await api.setDispenserPresenceGate(enabled);
+      writeLocal(PRESENCE_GATE_KEY, String(enabled));
+    } catch {
+      setPresenceGateEnabled(previous);
+    } finally {
+      setPresenceBusy(false);
     }
   }
 
@@ -529,7 +680,7 @@ export function Settings() {
           onClick={() => setShowAdvanced((v) => !v)}
           className="mt-3 w-full flex items-center justify-between px-1 text-xs font-bold text-brand-mute touch-active"
         >
-          <span>고급 설정 (ESP32 · MQTT)</span>
+          <span>고급 설정 (ESP32)</span>
           <ChevronRight
             className={`w-4 h-4 transition-transform ${showAdvanced ? "rotate-90" : ""}`}
           />
@@ -554,15 +705,6 @@ export function Settings() {
               </GhostButton>
             </div>
 
-            <label className="mt-3 block text-[11px] font-bold text-brand-mute pl-1">
-              MQTT 호스트
-            </label>
-            <input
-              value={mqttHost}
-              onChange={(event) => setMqttHost(event.target.value)}
-              className="mt-1 w-full rounded-2xl border border-brand-line bg-brand-card px-3 py-2 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
-              placeholder="IP 또는 비우면 자동"
-            />
 
             <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-brand-cream px-3 py-2.5">
               <span className="text-xs font-bold text-brand-brown">
@@ -604,6 +746,81 @@ export function Settings() {
 
       <section className="mt-6">
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">
+          자동 급수 고양이 감지
+        </h3>
+        <FeltCard innerClassName="p-4">
+          <div className="flex items-center gap-3">
+            <span className="w-11 h-11 rounded-2xl bg-brand-cream text-brand-brown flex items-center justify-center shrink-0">
+              <Wifi className="w-5 h-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-brand-brown">감지 후 자동 급수</p>
+              <p className="mt-1 text-xs font-semibold text-brand-mute">
+                자동 스케줄 시간이 되면 고양이를 감지할 때까지 기다립니다. 수동 급수는 바로 실행됩니다.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={presenceGateEnabled}
+              onChange={updatePresenceGate}
+              label="자동 급수 고양이 감지"
+              disabled={presenceBusy}
+            />
+          </div>
+          <p className="mt-3 rounded-2xl bg-brand-cream px-3 py-2.5 text-xs font-semibold text-brand-brown">
+            감지 대기는 최대 10분이며, 감지되지 않으면 해당 급수는 취소됩니다.
+          </p>
+        </FeltCard>
+      </section>
+
+      <section className="mt-6">
+        <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">
+          디스펜서 무게 영점
+        </h3>
+        <FeltCard innerClassName="p-4">
+          <div className="flex items-start gap-3">
+            <span className="w-11 h-11 rounded-2xl bg-brand-cream text-brand-brown flex items-center justify-center shrink-0">
+              <Cpu className="w-5 h-5" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-brand-brown">용기를 완전히 비운 뒤 실행하세요</p>
+              <p className="mt-1 text-xs font-semibold text-brand-mute">
+                조정한 영점은 ESP32에 저장되어 재부팅 후에도 유지됩니다.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <GhostButton
+              className="rounded-2xl py-2.5 text-sm"
+              onClick={() => tareDispenser("food")}
+              disabled={Boolean(tareBusy)}
+            >
+              {tareBusy === "food" ? "조정 중…" : "사료 영점"}
+            </GhostButton>
+            <GhostButton
+              className="rounded-2xl py-2.5 text-sm"
+              onClick={() => tareDispenser("water")}
+              disabled={Boolean(tareBusy)}
+            >
+              {tareBusy === "water" ? "조정 중…" : "물 영점"}
+            </GhostButton>
+          </div>
+          <PrimaryButton
+            className="mt-2 w-full rounded-2xl py-2.5 text-sm"
+            onClick={() => tareDispenser("all")}
+            disabled={Boolean(tareBusy)}
+          >
+            {tareBusy === "all" ? "조정 중…" : "사료 + 물 전체 영점"}
+          </PrimaryButton>
+          {tareMessage && (
+            <p className="mt-3 rounded-2xl bg-brand-cream px-3 py-2.5 text-xs font-semibold text-brand-brown">
+              {tareMessage}
+            </p>
+          )}
+        </FeltCard>
+      </section>
+
+      <section className="mt-6">
+        <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">
           알림 제어
         </h3>
         <FeltCard
@@ -620,7 +837,7 @@ export function Settings() {
             right={
               <ToggleSwitch
                 checked={pushOn}
-                onChange={(v) => { setPushOn(v); saveSettings({ push_enabled: v ? "Y" : "N" }); }}
+                onChange={updatePushEnabled}
                 label="푸시 알림"
               />
             }
@@ -692,9 +909,32 @@ export function Settings() {
           기기 제어
         </h3>
 
+        <button
+          type="button"
+          onClick={() => setSerialPanelOpen((open) => !open)}
+          className="w-full flex items-center justify-between rounded-3xl px-4 py-3 shadow-soft touch-active"
+          style={{ backgroundColor: BG_CARD }}
+        >
+          <span className="flex items-center gap-2 min-w-0">
+            <span className="w-9 h-9 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center border border-dashed border-brand-primary/30">
+              <Cpu className="w-4 h-4" />
+            </span>
+            <span className="min-w-0 text-left">
+              <span className="block text-xs font-bold text-brand-mute">기기 등록</span>
+              <span className="block text-sm font-bold text-brand-brown truncate">
+                로봇 시리얼 번호
+              </span>
+            </span>
+          </span>
+          <ChevronRight className={`w-5 h-5 text-brand-mute transition-transform ${serialPanelOpen ? "rotate-90" : ""}`} />
+        </button>
+
+        {serialPanelOpen && (
+        <>
         {/* 로봇 시리얼 번호 (기기 등록) */}
         {serial ? (
           <FeltCard
+            className="mt-3"
             innerClassName="px-4 py-4"
             decorations={
               <PaperIcon shape="bone" color="rgb(var(--brand-primary-deep))" opacity={0.1} className="absolute -right-3 -bottom-3 w-14 h-14 rotate-6" />
@@ -711,6 +951,11 @@ export function Settings() {
                 <p className="font-display text-base font-bold text-brand-brown tracking-wide truncate">
                   {serial}
                 </p>
+                {serialMessage && (
+                  <p className="mt-1 text-[11px] font-semibold text-brand-primary truncate">
+                    {serialMessage}
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -727,6 +972,14 @@ export function Settings() {
             <label className="flex items-center gap-1.5 text-xs font-bold text-brand-mute pl-0.5">
               <Cpu className="w-4 h-4 text-brand-primary" /> 로봇 시리얼 번호
             </label>
+            <div className="mt-3 rounded-2xl border border-dashed border-brand-primary/30 bg-brand-primary/10 px-3 py-2.5">
+              <p className="text-xs font-bold text-brand-brown">
+                로봇 기능을 사용하려면 먼저 시리얼 번호를 등록해 주세요.
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-brand-mute">
+                최초 등록한 사용자가 소유자가 되며, 다른 사용자는 소유자가 권한을 부여한 경우에만 사용할 수 있습니다.
+              </p>
+            </div>
             <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
               <input
                 value={serialInput}
@@ -738,21 +991,113 @@ export function Settings() {
               <PrimaryButton
                 className="px-4 py-2.5 rounded-2xl text-sm disabled:opacity-50"
                 onClick={registerSerial}
-                disabled={!serialInput.trim()}
+                disabled={!serialInput.trim() || serialBusy}
               >
-                등록
+                {serialBusy ? "확인 중" : "등록"}
               </PrimaryButton>
             </div>
+            {serialMessage && (
+              <p className="mt-2 text-[11px] font-semibold text-brand-primary pl-0.5">
+                {serialMessage}
+              </p>
+            )}
             <p className="mt-2 text-[11px] text-brand-mute pl-0.5">
               기기 밑면 또는 포장 박스의 시리얼 번호를 입력해 주세요.
             </p>
           </FeltCard>
         )}
+        </>
+        )}
 
-        <div className="grid grid-cols-2 gap-3 mt-3">
+        <button
+          type="button"
+          onClick={() => setMemberPanelOpen((open) => !open)}
+          className="mt-3 w-full flex items-center justify-between rounded-3xl px-4 py-3 shadow-soft touch-active"
+          style={{ backgroundColor: BG_CARD }}
+        >
+          <span className="flex items-center gap-2 min-w-0">
+            <span className="w-9 h-9 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center border border-dashed border-brand-primary/30">
+              <Lock className="w-4 h-4" />
+            </span>
+            <span className="min-w-0 text-left">
+              <span className="block text-xs font-bold text-brand-mute">로봇 권한 관리</span>
+              <span className="block text-sm font-bold text-brand-brown truncate">
+                {robotRole === "MEMBER" ? "권한 받은 상태" : "다른 사용자 권한 부여"}
+              </span>
+            </span>
+          </span>
+          <ChevronRight className={`w-5 h-5 text-brand-mute transition-transform ${memberPanelOpen ? "rotate-90" : ""}`} />
+        </button>
+
+        {memberPanelOpen && (
+        <FeltCard innerClassName="px-4 py-4" className="mt-3">
+          <div className="flex items-center gap-2">
+            <span className="w-9 h-9 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center border border-dashed border-brand-primary/30">
+              <Lock className="w-4 h-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-brand-mute">로봇 권한 관리</p>
+              <p className="text-sm font-bold text-brand-brown">
+                {robotRole === "MEMBER" ? "권한 받은 상태" : "다른 사용자 권한 부여"}
+              </p>
+            </div>
+          </div>
+          {robotRole === "MEMBER" ? (
+            <div className="mt-3 rounded-2xl border border-dashed border-brand-success/35 bg-brand-success/10 px-3 py-2.5">
+              <p className="text-xs font-bold text-brand-success flex items-center gap-1">
+                <Check className="w-3.5 h-3.5" /> 로봇 사용 권한을 받았습니다.
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-brand-mute">
+                소유자가 부여한 권한으로 로봇비전과 디스펜서 기능을 사용할 수 있습니다.
+              </p>
+            </div>
+          ) : (
+            <p className="mt-3 text-[11px] leading-relaxed text-brand-mute">
+              최초 등록자만 다른 사용자에게 로봇과 디스펜서 사용 권한을 줄 수 있습니다.
+            </p>
+          )}
+          {!serial && (
+            <p className="mt-2 text-[11px] font-semibold text-brand-primary">
+              시리얼 번호를 먼저 등록하면 권한 부여를 사용할 수 있습니다.
+            </p>
+          )}
+          {serial && robotRole === "OWNER" && (
+          <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+            <input
+              value={memberEmail}
+              onChange={(e) => setMemberEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && grantMemberAccess()}
+              placeholder="사용자 이메일"
+              disabled={!serial}
+              className="min-w-0 rounded-2xl border border-brand-line bg-brand-card px-3 py-2.5 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary placeholder:font-normal placeholder:text-brand-mute/60 disabled:opacity-60"
+            />
+            <PrimaryButton
+              className="px-4 py-2.5 rounded-2xl text-sm disabled:opacity-50"
+              onClick={grantMemberAccess}
+              disabled={!serial || !memberEmail.trim() || memberBusy}
+            >
+              {memberBusy ? "처리 중" : "권한 부여"}
+            </PrimaryButton>
+          </div>
+          )}
+          {serial && !robotRole && (
+            <p className="mt-2 text-[11px] font-semibold text-brand-primary">
+              권한 정보를 확인하는 중입니다.
+            </p>
+          )}
+          {memberMessage && (
+            <p className="mt-2 text-[11px] font-semibold text-brand-primary">
+              {memberMessage}
+            </p>
+          )}
+        </FeltCard>
+        )}
+
+        <div className="grid grid-cols-3 gap-3 mt-3">
           <button
             type="button"
-            disabled={!serial}
+            onClick={() => runRobotSystemAction("reboot")}
+            disabled={!serial || !!robotActionBusy}
             className="relative overflow-hidden flex flex-col items-center gap-2 py-5 rounded-3xl shadow-soft touch-active disabled:opacity-50"
             style={{ backgroundColor: BG_CARD }}
           >
@@ -760,11 +1105,29 @@ export function Settings() {
             <span className="relative z-10 w-11 h-11 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center border border-dashed border-brand-primary/30">
               <RotateCw className="w-5 h-5" />
             </span>
-            <span className="relative z-10 text-sm font-bold text-brand-brown">재부팅</span>
+            <span className="relative z-10 text-sm font-bold text-brand-brown">
+              {robotActionBusy === "reboot" ? "전송 중" : "재부팅"}
+            </span>
           </button>
           <button
             type="button"
-            disabled={!serial}
+            onClick={() => runRobotSystemAction("powerOn")}
+            disabled={!serial || !!robotActionBusy}
+            className="relative overflow-hidden flex flex-col items-center gap-2 py-5 rounded-3xl shadow-soft touch-active disabled:opacity-50"
+            style={{ backgroundColor: BG_CARD }}
+          >
+            <Stitch />
+            <span className="relative z-10 w-11 h-11 rounded-2xl bg-brand-success/15 text-brand-success flex items-center justify-center border border-dashed border-brand-success/30">
+              <Power className="w-5 h-5" />
+            </span>
+            <span className="relative z-10 text-sm font-bold text-brand-brown">
+              {robotActionBusy === "powerOn" ? "전송 중" : "전원 On"}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => runRobotSystemAction("powerOff")}
+            disabled={!serial || !!robotActionBusy}
             className="relative overflow-hidden flex flex-col items-center gap-2 py-5 rounded-3xl shadow-soft touch-active disabled:opacity-50"
             style={{ backgroundColor: BG_CARD }}
           >
@@ -772,9 +1135,16 @@ export function Settings() {
             <span className="relative z-10 w-11 h-11 rounded-2xl bg-brand-danger/15 text-brand-danger flex items-center justify-center border border-dashed border-brand-danger/30">
               <Power className="w-5 h-5" />
             </span>
-            <span className="relative z-10 text-sm font-bold text-brand-brown">전원 Off</span>
+            <span className="relative z-10 text-sm font-bold text-brand-brown">
+              {robotActionBusy === "powerOff" ? "전송 중" : "전원 Off"}
+            </span>
           </button>
         </div>
+        {robotActionMessage && (
+          <p className="mt-2 px-1 text-[11px] font-semibold text-brand-primary">
+            {robotActionMessage}
+          </p>
+        )}
         {!serial && (
           <p className="mt-2 px-1 text-[11px] text-brand-mute">
             기기를 먼저 등록하면 재부팅·전원 제어를 사용할 수 있어요.

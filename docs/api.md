@@ -19,7 +19,8 @@ Base URL: `http://localhost:8000`
 | Method | URL | Body | Description |
 | --- | --- | --- | --- |
 | `POST` | `/api/dispenser/feed` | `{"amount":1}` | food dispense |
-| `POST` | `/api/dispenser/water` | `{"amount":1}` | water dispense |
+| `POST` | `/api/dispenser/water` | `{"seconds":60}` | timed water pump, 30-90 seconds |
+| `POST` | `/api/dispenser/pump/on` | - | start water pump continuously |
 | `POST` | `/api/dispenser/pump/off` | - | stop water pump |
 | `POST` | `/api/dispenser/pump/speed` | `{"speed":200}` | set water pump PWM speed |
 | `POST` | `/api/dispenser/tare` | - | tare both load cells |
@@ -31,6 +32,7 @@ Base URL: `http://localhost:8000`
 - robot camera: `robot/camera`
 - dispenser food: `dispenser/feed`
 - dispenser water: `dispenser/water`
+- dispenser pump start: `dispenser/pump/on`
 - dispenser pump stop: `dispenser/pump/off`
 - dispenser pump speed: `dispenser/pump/speed`
 - dispenser load cell tare: `dispenser/tare`

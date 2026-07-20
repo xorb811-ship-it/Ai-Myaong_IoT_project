@@ -17,12 +17,17 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from comm.serial_comm import SerialComm
+from device_hmac import signed_message, verify_signed_message
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PI_ENV = REPO_ROOT / "raspberrypi" / ".env"
 load_dotenv(REPO_ROOT / "raspberrypi" / ".env", override=True)
 SETUP_WIFI_SCRIPT = REPO_ROOT / "scripts" / "setup-raspberrypi-wifi.sh"
 DEVICE_ID = os.getenv("DEVICE_ID", "myaong-pi-01")
+ROBOT_SERIAL = (os.getenv("ROBOT_SERIAL") or os.getenv("DEVICE_SERIAL") or DEVICE_ID).strip().upper()
+DEVICE_SECRET = (os.getenv("ROBOT_DEVICE_SECRET") or os.getenv("DEVICE_SECRET") or "").strip()
+HMAC_REQUIRED = os.getenv("ROBOT_HMAC_REQUIRED", "false").lower() == "true"
+HMAC_MAX_AGE_SECONDS = int(os.getenv("ROBOT_HMAC_MAX_AGE_SECONDS", "300"))
 WIFI_JOB_STATUS: dict[str, object] = {
     "state": "idle",
     "ssid": "",
@@ -41,6 +46,9 @@ ROBOT_COMMANDS = {
     "CAM_LEFT",
     "CAM_RIGHT",
     "CAM_CENTER",
+    "REBOOT",
+    "POWER_ON",
+    "POWER_OFF",
 }
 
 MOVE_COMMAND_ALIASES = {
@@ -89,7 +97,7 @@ class RaspberryPiAgent:
             topic.strip()
             for topic in os.getenv(
                 "MQTT_TOPICS",
-                "ai-myaong/robot/move,ai-myaong/robot/pantilt,robot/move,robot/camera,system/backend/announce",
+                "ai-myaong/robot/move,ai-myaong/robot/pantilt,ai-myaong/robot/system,robot/move,robot/camera,system/backend/announce",
             ).split(",")
             if topic.strip()
         )
@@ -220,7 +228,7 @@ class RaspberryPiAgent:
             return
 
         try:
-            client.publish("ai-myaong/robot/sensor", json.dumps(payload, ensure_ascii=False))
+            client.publish("ai-myaong/robot/sensor", json.dumps(self._signed_payload(payload), ensure_ascii=False))
             if self._mqtt_publish_failed:
                 print("[sensor] MQTT publish 복구됨")
                 self._mqtt_publish_failed = False
@@ -259,7 +267,7 @@ class RaspberryPiAgent:
         try:
             request = urllib.request.Request(
                 f"{backend_url}/api/robot/sensor",
-                data=json.dumps(payload).encode("utf-8"),
+                data=json.dumps(self._signed_payload(payload)).encode("utf-8"),
                 headers={"Content-Type": "application/json", "Accept": "application/json"},
                 method="POST",
             )
@@ -346,6 +354,11 @@ class RaspberryPiAgent:
         if not isinstance(payload, dict):
             return None
 
+        payload = self._verified_or_legacy_payload(payload)
+        if payload is None:
+            print(f"[raspberrypi] ignored unsigned or invalid signed command on {topic}")
+            return None
+
         command = (
             payload.get("cmd")
             or payload.get("command")
@@ -368,6 +381,28 @@ class RaspberryPiAgent:
             return PANTILT_COMMAND_ALIASES.get(normalized, normalized)
 
         return MOVE_COMMAND_ALIASES.get(normalized) or PANTILT_COMMAND_ALIASES.get(normalized) or normalized
+
+    def _signed_payload(self, payload: dict[str, object]) -> dict[str, object]:
+        if not DEVICE_SECRET:
+            return payload
+        return signed_message(DEVICE_SECRET, ROBOT_SERIAL, payload)
+
+    def _verified_or_legacy_payload(self, message: dict[str, object]) -> dict[str, object] | None:
+        if "signature" not in message:
+            return None if HMAC_REQUIRED else message
+
+        if not DEVICE_SECRET:
+            return None if HMAC_REQUIRED else message.get("payload") if isinstance(message.get("payload"), dict) else message
+
+        if verify_signed_message(
+            message,
+            DEVICE_SECRET,
+            expected_robot_serial=ROBOT_SERIAL,
+            max_age_seconds=HMAC_MAX_AGE_SECONDS,
+        ):
+            payload = message.get("payload")
+            return payload if isinstance(payload, dict) else None
+        return None
 
     def _set_tcp_nodelay(self, client) -> None:
         if not self.mqtt_tcp_nodelay:
@@ -479,6 +514,10 @@ def _run_wifi_http_server(host: str, port: int, agent: RaspberryPiAgent) -> None
     @app.post("/api/robot/command")
     def robot_command(body: dict | None = None):
         body = body or {}
+        verified_body = agent._verified_or_legacy_payload(body)
+        if verified_body is None:
+            raise HTTPException(status_code=401, detail="invalid device signature")
+        body = verified_body
         command = str(
             body.get("cmd")
             or body.get("command")

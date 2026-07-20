@@ -1,5 +1,6 @@
 #include "loadcell_control.h"
 #include "motor_control.h"
+#include "presence_control.h"
 #include "mqtt_control.h"
 #include "serial_handler.h"
 #include "servo_control.h"
@@ -11,6 +12,7 @@ void setup() {
   setupServos();
   setupWaterPump();
   setupLoadCell();
+  setupPresenceSensor();
   printMotorPinout();
   printWaterPumpPinout();
   printLoadCellPinout();
@@ -24,4 +26,5 @@ void loop() {
   serviceMotors();
   serviceWaterPump();
   serviceLoadCell();
+  servicePresenceSensor();
 }

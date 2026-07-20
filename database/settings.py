@@ -15,13 +15,14 @@ class Settings(Base):
     stranger_alert  = Column(String(1),   default="Y")
     feed_alert      = Column(String(1),   default="N")
     dark_mode       = Column(String(10),  default="system")
-    feed_amount     = Column(Float,       default=150)  # 1회 제공량 기본값 = 슬라이더 중앙값(5~300)
-    water_amount    = Column(Float,       default=160)  # 1회 급수량 기본값 = 슬라이더 중앙값(20~300)
+    feed_amount     = Column(Float,       default=25)  # 1회 제공량 기본값 (슬라이더 5~50g)
+    water_amount    = Column(Float,       default=25)  # 1회 급수량 기본값 (슬라이더 5~50ml)
     feed_schedule   = Column(String(500), nullable=True)
     water_schedule  = Column(String(500), nullable=True)
     robot_serial    = Column(String(50),  nullable=True)
     mqtt_host       = Column(String(100), nullable=True)
     esp32_setup_url = Column(String(255), nullable=True)
+    onboarded       = Column(String(1),   default="N")  # 최초 온보딩 안내 완료 여부 (Y/N)
     updated_at      = Column(DateTime,    default=datetime.utcnow,
                              onupdate=datetime.utcnow)
 

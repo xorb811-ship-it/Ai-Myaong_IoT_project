@@ -4,6 +4,7 @@ import urllib.request
 from typing import Any
 from uuid import uuid4
 
+from app.core.device_hmac import signed_message
 from app.mqtt.mqtt_client import MqttClient
 from app.runtime_config import runtime_env
 from app.services.database import Database
@@ -59,6 +60,27 @@ class RobotService:
         self.database.log_event("robot/status", "capture command handled", status)
         return self._response(request_id, topic, payload)
 
+    def reboot(self) -> dict[str, Any]:
+        request_id = str(uuid4())
+        topic = "ai-myaong/robot/system"
+        payload = {"request_id": request_id, "cmd": "REBOOT"}
+        self._send_robot_command(topic, payload)
+        status = self.simulator.status()
+        self.database.log_command(request_id, "reboot", topic, payload, "accepted")
+        self.database.log_event("robot/status", "reboot command handled", status)
+        return self._response(request_id, topic, payload)
+
+    def power(self, on: bool) -> dict[str, Any]:
+        request_id = str(uuid4())
+        topic = "ai-myaong/robot/system"
+        command = "POWER_ON" if on else "POWER_OFF"
+        payload = {"request_id": request_id, "cmd": command, "on": on}
+        self._send_robot_command(topic, payload)
+        status = self.simulator.status()
+        self.database.log_command(request_id, "power", topic, payload, "accepted")
+        self.database.log_event("robot/status", f"power command handled: {command}", status)
+        return self._response(request_id, topic, payload)
+
     def status(self) -> dict[str, Any]:
         return self.simulator.status()
 
@@ -79,9 +101,11 @@ class RobotService:
         }
 
     def _send_robot_command(self, topic: str, payload: dict[str, Any]) -> bool:
+        payload = self._signed_payload_if_configured(payload)
         transport = runtime_env("ROBOT_COMMAND_TRANSPORT", "mqtt").strip().lower()
         if transport in {"local_serial", "serial", "usb"}:
-            command = str(payload.get("cmd") or "").strip()
+            command_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else payload
+            command = str(command_payload.get("cmd") or "").strip()
             if not command:
                 print(f"[serial:local] empty command payload: {payload}")
                 return False
@@ -94,6 +118,20 @@ class RobotService:
             return self._send_to_pi_agent(payload)
 
         return self.mqtt.publish(topic, payload)
+
+    def _signed_payload_if_configured(self, payload: dict[str, Any]) -> dict[str, Any]:
+        robot_serial = (
+            runtime_env("ROBOT_SERIAL", "")
+            or runtime_env("DEVICE_SERIAL", "")
+            or runtime_env("DEVICE_ID", "")
+        ).strip().upper()
+        device_secret = (
+            runtime_env("ROBOT_DEVICE_SECRET", "")
+            or runtime_env("DEVICE_SECRET", "")
+        ).strip()
+        if not robot_serial or not device_secret:
+            return payload
+        return signed_message(device_secret, robot_serial, payload)
 
     def _send_to_pi_agent(self, payload: dict[str, Any]) -> bool:
         base_url = runtime_env("PI_AGENT_BASE_URL", "").strip().rstrip("/")

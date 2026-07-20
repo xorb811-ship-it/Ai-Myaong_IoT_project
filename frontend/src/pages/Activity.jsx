@@ -154,13 +154,18 @@ export function Activity() {
         ? ''
         : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     }
-    const food = (feedLogs.feed || []).map((x, i) => {
+    // 0g 행은 자동 배식 스케줄러의 '이 분에 이미 배식함' 잠금 기록이라 활동으로 보여줄 게 없다.
+    // 실제 배식량은 ESP32 가 저울로 잰 값이 별도 행으로 들어온다.
+    const food = (feedLogs.feed || []).filter((x) => (Number(x.amount_g) || 0) > 0).map((x, i) => {
       const amt = Math.round(Number(x.amount_g) || 0)
       return { id: `f${i}-${x.created_at}`, cat: 'feed', kind: 'food', icon: UtensilsCrossed, type: '배식', amount: amt, unit: 'g', feedType: x.feed_type, desc: `사료 ${amt}g`, time: fmt(x.created_at), rawTime: x.created_at }
     })
-    const water = (feedLogs.water || []).map((x, i) => {
+    // 0ml 행은 자동 급수 스케줄러의 '이 분에 이미 급수함' 잠금 기록이라 활동으로 보여줄 게 없다.
+    // (순환 구조라 펌프를 돌려도 물이 통에서 줄지 않아 급수량 ml 이 성립하지 않는다)
+    const water = (feedLogs.water || []).filter((x) => (Number(x.amount_ml) || 0) > 0).map((x, i) => {
       const amt = Math.round(Number(x.amount_ml) || 0)
-      return { id: `w${i}-${x.created_at}`, cat: 'feed', kind: 'water', icon: Droplets, type: '급수', amount: amt, unit: 'ml', feedType: x.water_type, desc: `물 ${amt}ml`, time: fmt(x.created_at), rawTime: x.created_at }
+      const skipped = x.water_type === 'skipped'
+      return { id: `w${i}-${x.created_at}`, cat: 'feed', kind: 'water', icon: Droplets, type: skipped ? '급수 미실행' : '급수', amount: amt, unit: skipped ? '초' : 'ml', feedType: x.water_type, desc: skipped ? `고양이 미감지로 ${amt}초 자동 급수 취소` : `물 ${amt}ml`, time: fmt(x.created_at), rawTime: x.created_at, warning: skipped }
     })
     return [...food, ...water]
   }, [feedLogs])

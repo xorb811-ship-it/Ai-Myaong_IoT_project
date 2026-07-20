@@ -99,14 +99,37 @@ def _build_prompt(summary_json: str) -> str:
 - "꾸준히 관찰하세요"처럼 막연한 표현만 단독으로 쓰지 마라.
 - 무엇을, 얼마나, 며칠 동안 확인할지 구체적으로 말해라.
 - 같은 의미의 조언을 반복하지 마라.
+
+이미 계산된 수치 활용 규칙 (가장 중요):
+- computed_metrics 안에는 이미 계산된 변화율과 추세가 들어 있다. 이 값을 직접 다시 계산하지 말고 그대로 인용해라.
+  - 급식 추세: food_change_percent(%), food_trend, first_3_days_avg_food_g, last_3_days_avg_food_g
+  - 급수 추세: water_change_percent(%), water_trend, first_3_days_avg_water_ml, last_3_days_avg_water_ml
+  - 활동 추세: activity_change_percent(%), activity_trend
+  - 자세 비율: lying_pose_ratio_percent, active_pose_ratio_percent, most_common_pose_overall
+  - 설정 대비: avg_food_vs_default_percent, avg_water_vs_default_percent
+- 예: "최근 3일 급식량이 first_3_days_avg_food_g 대비 food_change_percent% 만큼 감소했다"처럼 데이터에 있는 값을 그대로 근거로 써라. 없는 숫자를 지어내지 마라.
+
+데이터 부족 처리 규칙:
+- data_quality의 feed_days, water_days, activity_days는 해당 항목이 실제로 기록된 날 수다.
+- 기록된 날이 3일 미만인 항목은 추세를 단정하지 말고, "아직 데이터가 부족해 추세를 판단하기 이르다"고 말하고 data_limitations에 적어라.
+- missing_feed_days, missing_water_days, missing_activity_days가 크면(전체 기간의 절반 이상) confidence를 low로 낮춰라.
+- pose_sample_count나 activity_sample_count가 0이면 자세·활동 관련 결론을 내리지 말고 data_limitations에 적어라.
+
+pet.notes(보호자 메모) 활용 규칙:
+- pet.notes에 보호자가 적은 특이사항(예: 평소 소식, 특정 음식 알레르기, 과거 병력 언급 등)이 있으면 조언에 반영해라.
+- 단, notes의 내용을 의학적으로 단정하거나 진단하지 말고 "보호자가 남긴 메모를 참고하면" 수준으로만 언급해라.
+
+출력 형식 규칙:
 - 데이터가 부족한 항목은 단정하지 말고 data_limitations에 적어라.
+- 모든 문장은 부드럽고 친근한 "~해요" 말투로 작성해라. (예: "급식량이 조금 줄었어요", "물을 잘 마시고 있어요")
+- 명령조("~하세요", "~해라")나 딱딱한 보고서 문체 대신 보호자에게 다정하게 말하듯 써라.
 - 사용자가 이해하기 쉬운 자연스러운 한국어로 작성해라.
 - 출력은 반드시 JSON만 작성해라.
 - JSON 외의 설명 문장, 마크다운 코드블록, 주석을 출력하지 마라.
 
-출력 JSON 형식:
+출력 JSON 형식 (모든 문자열 값은 "~해요" 말투로 작성):
 {{
-  "summary": "입력 데이터에 근거한 한 문장 요약",
+  "summary": "입력 데이터에 근거한 한 문장 요약 (예: OO이는 최근 급식량이 조금 줄었지만 물은 잘 마시고 있어요)",
   "risk_level": "low | medium | high",
   "confidence": "low | medium | high",
   "reference_comparison": [
@@ -141,7 +164,7 @@ def _build_prompt(summary_json: str) -> str:
   "data_limitations": [
     "데이터 부족이나 분석 한계"
   ],
-  "disclaimer": "이 내용은 수의학적 진단이 아니며, 이상 증상이 지속되면 동물병원에 상담하세요."
+  "disclaimer": "이 내용은 수의학적 진단이 아니라 생활 조언이에요. 이상 증상이 계속되면 동물병원에 상담해 주세요."
 }}
 
 입력 데이터:
@@ -241,11 +264,17 @@ def normalize_llm_json(content: str) -> str:
 def _call_with_sdk(api_key: str, model: str, summary_json: str) -> str:
     from openai import OpenAI
 
-    client = OpenAI(api_key=api_key)
+    # 이 라우트는 동기(def)라 응답을 기다리는 동안 워커 스레드가 묶인다.
+    # 타임아웃이 없으면 OpenAI 가 늘어질 때 스레드가 몇 분씩 잡힌다 — HTTP 경로와 같은 30초.
+    client = OpenAI(api_key=api_key, timeout=30)
     response = client.chat.completions.create(
         model=model,
         messages=_messages(summary_json),
         temperature=0.2,
+        # 문법적으로 올바른 JSON 을 보장받는다. 없으면 응답이 깨져 _safe_json_report 로
+        # 빠지는데, 그건 돈 내고 호출해놓고 쓸모없는 껍데기를 받는 경우다.
+        # (스키마까지 보장하진 않으므로 프론트의 필드별 방어는 그대로 필요하다)
+        response_format={"type": "json_object"},
     )
     content = response.choices[0].message.content
     if not content:
@@ -259,6 +288,7 @@ def _call_with_http(api_key: str, model: str, summary_json: str) -> str:
             "model": model,
             "messages": _messages(summary_json),
             "temperature": 0.2,
+            "response_format": {"type": "json_object"},
         },
         ensure_ascii=False,
     ).encode("utf-8")
@@ -287,15 +317,16 @@ def generate_pet_health_advice(summary_data: dict) -> str:
 
     model = os.getenv("OPENAI_MODEL", DEFAULT_MODEL)
 
+    call_errors = (HTTPError, URLError, TimeoutError, ValueError, KeyError, IndexError, json.JSONDecodeError)
     try:
         return _call_with_sdk(api_key, model, summary_json)
     except ImportError:
+        # openai 패키지가 없다 → HTTP 로 같은 API 를 부른다. 이건 성공할 수 있다.
         try:
             return _call_with_http(api_key, model, summary_json)
-        except (HTTPError, URLError, TimeoutError, ValueError, KeyError, IndexError, json.JSONDecodeError):
+        except call_errors:
             return _fallback_json("LLM 호출 중 오류가 발생해 기본 리포트를 반환했습니다.")
     except Exception:
-        try:
-            return _call_with_http(api_key, model, summary_json)
-        except (HTTPError, URLError, TimeoutError, ValueError, KeyError, IndexError, json.JSONDecodeError):
-            return _fallback_json("LLM 호출 중 오류가 발생해 기본 리포트를 반환했습니다.")
+        # SDK 는 있는데 호출이 실패했다(키/한도/모델 오류 등). HTTP 로 같은 키·모델·서버를
+        # 다시 불러봐야 똑같이 실패하고 30초만 더 버린다. 바로 기본 리포트로 넘어간다.
+        return _fallback_json("LLM 호출 중 오류가 발생해 기본 리포트를 반환했습니다.")

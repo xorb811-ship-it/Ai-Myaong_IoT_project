@@ -14,15 +14,12 @@ import { Badge, Card, GhostButton, PrimaryButton } from '../components/ui'
 import { api } from '../api/api'
 
 const ESP32_SETUP_URL_KEY = 'aimyaong:esp32SetupUrl'
-const ESP32_MQTT_HOST_KEY = 'aimyaong:esp32MqttHost'
 const PENDING_PI_WIFI_KEY = 'aimyaong:pendingPiWifi'
 const DEFAULT_ESP32_SETUP_URL = import.meta.env.VITE_ESP32_SETUP_URL || 'http://192.168.4.1'
-const DEFAULT_ESP32_MQTT_HOST = import.meta.env.VITE_ESP32_MQTT_HOST || '10.1.82.103'
 
 export function WifiSetup() {
   const navigate = useNavigate()
   const [setupUrl, setSetupUrl] = useState(() => readLocal(ESP32_SETUP_URL_KEY, DEFAULT_ESP32_SETUP_URL))
-  const [mqttHost, setMqttHost] = useState(() => readLocal(ESP32_MQTT_HOST_KEY, DEFAULT_ESP32_MQTT_HOST))
   const [status, setStatus] = useState(null)
   const [piStatus, setPiStatus] = useState(null)
   const [networks, setNetworks] = useState([])
@@ -41,9 +38,9 @@ export function WifiSetup() {
   )
   const currentNetwork = piStatus?.wifiSsid || status?.ssid || status?.savedSsid || ''
   const currentIp = piStatus?.wifiIp || status?.ip || ''
+  const mqttHost = piStatus?.raspberrypiEnv?.MQTT_BROKER_HOST || status?.mqttHost || ''
 
   useEffect(() => writeLocal(ESP32_SETUP_URL_KEY, setupUrl), [setupUrl])
-  useEffect(() => writeLocal(ESP32_MQTT_HOST_KEY, mqttHost), [mqttHost])
 
   useEffect(() => {
     refreshStatus({ silent: true })
@@ -90,7 +87,6 @@ export function WifiSetup() {
       if (!silent) setMessage('')
       const data = await esp32Request('/api/wifi/status')
       setStatus(data)
-      if (data.mqttHost) setMqttHost(data.mqttHost)
     } catch {
       setStatus(null)
       if (!silent) showMessage('ESP32 설정 주소에 연결할 수 없습니다.')
@@ -101,8 +97,6 @@ export function WifiSetup() {
     try {
       const data = await api.getNetworkStatus()
       setPiStatus(data)
-      const host = data.raspberrypiEnv?.MQTT_BROKER_HOST || data.wifiIp
-      if (host) setMqttHost(host)
     } catch {
       setPiStatus(null)
     }
@@ -119,7 +113,9 @@ export function WifiSetup() {
         data = await esp32Request('/api/wifi/scan')
       }
 
-      const nextNetworks = data.networks || []
+      const nextNetworks = (data.networks || []).filter(
+        (network) => (network.compatible ?? network.esp32Compatible ?? false) === true,
+      )
       setNetworks(nextNetworks)
       setSelectedNetwork(null)
       showMessage(nextNetworks.length ? '검색 완료' : '검색된 Wi-Fi가 없습니다.')
@@ -127,6 +123,20 @@ export function WifiSetup() {
       await refreshPiStatus()
     } catch (error) {
       showMessage(error.message || 'Wi-Fi 검색에 실패했습니다.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function startEsp32SetupMode() {
+    setBusy(true)
+    showMessage('ESP32 설정 모드를 시작하는 중입니다.')
+    try {
+      const data = await api.startEsp32SetupMode()
+      if (data.setupUrl) setSetupUrl(data.setupUrl)
+      showMessage(`${data.ssid || 'AiMyaong-Setup'} Wi-Fi에 연결한 뒤 아래에서 저장하세요.`)
+    } catch (error) {
+      showMessage(error.message || 'ESP32 설정 모드를 시작하지 못했습니다.')
     } finally {
       setBusy(false)
     }
@@ -189,7 +199,6 @@ export function WifiSetup() {
         body: JSON.stringify({
           ssid: payload.ssid,
           password: payload.password,
-          mqttHost,
           reboot: false,
         }),
       })
@@ -214,13 +223,9 @@ export function WifiSetup() {
       const data = await api.configurePiWifi({
         ssid: payload.ssid,
         password: payload.password,
-        mqttHost: mqttHostForPiConnect(mqttHost),
-        mqttPort: 1883,
-        esp32SetupUrl: setupUrl,
         piApFallback,
       })
       const nextHost = data.raspberrypiEnv?.MQTT_BROKER_HOST || data.backendEnv?.MQTT_BROKER_HOST
-      if (nextHost) setMqttHost(nextHost)
       setSelectedNetwork(pendingNetwork)
       if (data.pendingReconnect) {
         showMessage(`${payload.ssid}로 이동 중입니다. 라즈베리파이의 새 IP를 찾는 중입니다.`)
@@ -257,8 +262,6 @@ export function WifiSetup() {
       try {
         const data = await api.getNetworkStatus()
         setPiStatus(data)
-        const host = data.raspberrypiEnv?.MQTT_BROKER_HOST || data.wifiIp
-        if (host) setMqttHost(host)
         const wifiJob = data.wifiJob || {}
         if (wifiJob.state === 'rolled_back' || wifiJob.state === 'failed') {
           clearPendingPiWifi()
@@ -309,10 +312,24 @@ export function WifiSetup() {
 
       <section className="grid grid-cols-2 gap-3">
         <StatusTile icon={<Wifi className="w-5 h-5" />} label="ESP32" value={status?.apIp || '192.168.4.1'} />
-        <StatusTile icon={<Router className="w-5 h-5" />} label="MQTT" value={piStatus?.raspberrypiEnv?.MQTT_BROKER_HOST || status?.mqttHost || mqttHost} />
+        <StatusTile icon={<Router className="w-5 h-5" />} label="MQTT" value={mqttHost || '자동'} />
       </section>
 
       <Card className="mt-4 p-4">
+        <div className="mb-3 rounded-2xl bg-brand-cream px-3 py-3">
+          <p className="text-sm font-bold text-brand-brown">ESP32 등록 Wi-Fi 변경</p>
+          <p className="mt-1 text-xs font-semibold text-brand-mute">
+            먼저 2.4GHz 목록을 스캔한 다음 설정 모드를 켜고 AiMyaong-Setup에 연결하세요.
+          </p>
+          <PrimaryButton
+            type="button"
+            className="mt-3 w-full rounded-2xl py-2.5"
+            onClick={startEsp32SetupMode}
+            disabled={busy}
+          >
+            ESP32 설정 모드 시작
+          </PrimaryButton>
+        </div>
         <div className="grid grid-cols-[1fr_auto] gap-2">
           <input
             value={setupUrl}
@@ -324,12 +341,6 @@ export function WifiSetup() {
             <RefreshCw className="w-4 h-4" />
           </GhostButton>
         </div>
-        <input
-          value={mqttHost}
-          onChange={(event) => setMqttHost(event.target.value)}
-          className="mt-3 w-full rounded-2xl border border-brand-line bg-brand-card px-3 py-2.5 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
-          placeholder="MQTT 호스트 IP 또는 비우면 자동"
-        />
       </Card>
 
       <section className="mt-4">
@@ -404,7 +415,7 @@ export function WifiSetup() {
                 className="mt-2 w-full rounded-2xl border border-brand-line bg-brand-card px-3 py-3 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
                 placeholder="Wi-Fi 비밀번호"
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !busy) saveSharedWifiFromModal()
+                  if (event.key === 'Enter' && !busy) saveEsp32OnlyFromModal()
                 }}
               />
             ) : (
@@ -427,7 +438,7 @@ export function WifiSetup() {
               <GhostButton type="button" className="rounded-2xl py-3" onClick={closeNetworkModal} disabled={busy}>
                 취소
               </GhostButton>
-              <PrimaryButton type="button" className="rounded-2xl py-3" onClick={saveSharedWifiFromModal} disabled={busy}>
+              <PrimaryButton type="button" className="rounded-2xl py-3" onClick={saveEsp32OnlyFromModal} disabled={busy}>
                 {busy ? '적용 중' : '확인'}
               </PrimaryButton>
             </div>
@@ -436,9 +447,9 @@ export function WifiSetup() {
                 Wi-Fi 설정을 적용하는 중입니다. 연결이 바뀌는 동안 잠시 기다려 주세요.
               </p>
             )}
-            <GhostButton type="button" className="mt-2 w-full rounded-2xl py-3" onClick={saveEsp32OnlyFromModal} disabled={busy}>
+            <GhostButton type="button" className="mt-2 w-full rounded-2xl py-3" onClick={saveSharedWifiFromModal} disabled={busy}>
               <CheckCircle2 className="w-4 h-4" />
-              ESP32만 저장
+              라즈베리파이에도 같이 적용
             </GhostButton>
           </div>
         </div>
@@ -520,12 +531,6 @@ function normalizeWifiError(message) {
     return '라즈베리파이 Wi-Fi가 연결 중 상태에서 멈췄습니다. 비밀번호, 공유기 DHCP, 2.4GHz 지원 여부를 확인하세요.'
   }
   return message
-}
-
-function mqttHostForPiConnect(value) {
-  const host = value.trim()
-  if (!host || host === DEFAULT_ESP32_MQTT_HOST) return 'auto'
-  return host
 }
 
 function readLocal(key, fallback) {
